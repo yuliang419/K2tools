@@ -92,6 +92,19 @@ def draw_aper(flux,aper,epic):
 
 	return seg	
 
+def remove_nan(time,flux):
+#remove all empty frames
+	bad = []
+	for i in range(0,len(time)):
+		f = array(flux[i])
+		sig = nanstd(f)
+		if isnan(sig)==1:
+			bad.append(i)
+
+	time = delete(time,bad)
+	flux = delete(flux,bad,axis=0)
+	return time, flux
+
 def get_bg(time,flux,aper,epic):
 	inds = where(aper == 0)
 	bg = []
@@ -115,7 +128,7 @@ def get_bg(time,flux,aper,epic):
 	bg = array(bg)*num
 	sig = nanstd(bg)
 	med = nanmedian(bg)
-	bg[where(isnan(bg)==1)] = 0
+	# bg[where(isnan(bg)==1)] = 0
 	flagged = time[where(abs(bg-med)>3*sig)]
 	fig = plt.figure()
 	fig.clear()
@@ -133,4 +146,4 @@ def get_centroid(flux,aper):
 
 	pos = where(flux != 0)
 
-	return 0
+	return flux
