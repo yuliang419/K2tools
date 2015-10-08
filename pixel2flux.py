@@ -129,7 +129,7 @@ def get_bg(time,flux,aper,epic):
 	sig = nanstd(bg)
 	med = nanmedian(bg)
 	# bg[where(isnan(bg)==1)] = 0
-	flagged = time[where(abs(bg-med)>3*sig)]
+	flagged = where(abs(bg-med)>3*sig)
 	fig = plt.figure()
 	fig.clear()
 	plt.plot(time,bg)
@@ -139,11 +139,31 @@ def get_bg(time,flux,aper,epic):
 
 	return bg, flagged
 
-def get_centroid(flux,aper):
+def get_centroid(f,aper):
 	#input flux of individual frames
-	flux *= aper
+	flux = f*aper
 	f_tot = nansum(flux)
 
-	pos = where(flux != 0)
+	pos = where(flux > 0) #coords of pixels in aperture
+	x = pos[0]
+	y = pos[1]
 
-	return flux
+	xc = sum( flux[pos]*x )/f_tot
+	yc = sum( flux[pos]*y )/f_tot
+
+	# fig = plt.figure()
+	# fig.clear()
+	# plt.imshow(flux,norm=LogNorm(),interpolation='none')
+	# plt.plot([yc],[xc],marker='o',color='b')
+	# plt.show()	
+
+	return xc,yc
+
+def plot_lc(time,flux,aper,epic):
+	bg, flags = get_bg(time,flux,aper,epic)
+	time = delete(time,flags)
+	flux = delete(flux,flags,axis=0)
+	bg = delete(bg,flags)
+
+	for i in range(0,len(time)):
+		
