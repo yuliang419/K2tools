@@ -29,6 +29,13 @@ def read_pixel(epic,field,cad):
 	epic = header['KEPLERID']
 	x = hdulist[2].header['CRVAL2P'] #x position of pixel
 	y = hdulist[2].header['CRVAL1P'] #y position of pixel
+	ra = hdulist[0].header['RA_OBJ']
+	dec = hdulist[0].header['DEC_OBJ']
+
+	heading = '#epic  kepmag  ra  dec'
+	dat = [epic, kepmag, ra, dec]
+	savetxt('outputs/'+str(epic)+'info.txt',dat,header=heading,fmt='%s')
+
 	if kepmag <= 10:
 		print 'WARNING: saturated target'
 
@@ -88,7 +95,7 @@ def draw_aper(flux,aper,epic):
 	plt.plot(seg[:,0],seg[:,1],color='r',zorder=10,lw=2.5)
 	plt.xlim(0,aper.shape[1])
 	plt.ylim(0,aper.shape[0])
-	plt.savefig(str(epic)+'.pdf')
+	plt.savefig('outputs/'+str(epic)+'.pdf')
 
 	return seg	
 
@@ -105,7 +112,7 @@ def remove_nan(time,flux):
 	flux = delete(flux,bad,axis=0)
 	return time, flux
 
-def get_bg(time,flux,aper,epic):
+def get_bg(time,flux,aper,epic,plot=True):
 	inds = where(aper == 0)
 	bg = []
 	num = sum(aper)
@@ -130,12 +137,13 @@ def get_bg(time,flux,aper,epic):
 	med = nanmedian(bg)
 	# bg[where(isnan(bg)==1)] = 0
 	flagged = where(abs(bg-med)>3*sig)
-	fig = plt.figure()
-	fig.clear()
-	plt.plot(time,bg)
-	plt.xlabel('Time')
-	plt.ylabel('Background flux')
-	plt.savefig('bg'+str(epic)+'.pdf')
+	if plot:
+		fig = plt.figure()
+		fig.clear()
+		plt.plot(time,bg)
+		plt.xlabel('Time')
+		plt.ylabel('Background flux')
+		plt.savefig('outputs/'+str(epic)+'_bg.pdf')
 
 	return bg, flagged
 
@@ -165,5 +173,30 @@ def plot_lc(time,flux,aper,epic):
 	flux = delete(flux,flags,axis=0)
 	bg = delete(bg,flags)
 
+	xc = []
+	yc = []
+	ftot = []
+
 	for i in range(0,len(time)):
-		
+		f = array(flux[i])
+		ftot.append(nansum(f*aper) - bg[i])
+
+		x, y = get_centroid(f,aper)
+		xc.append(x)
+		yc.append(y)
+
+	fig = plt.figure()
+	fig.clear()
+	plt.plot(time,ftot,marker='o')
+	plt.xlabel('Time')
+	plt.ylabel('Flux (pixel counts)')
+	plt.savefig('outputs/'+str(epic)+'_rawlc.pdf')
+
+	fig = plt.figure()
+	fig.clear()
+	plt.plot(time,yc,marker='o')
+	plt.xlabel('Time')
+	plt.ylabel('Horizontal centroid shift (pixels)')
+	plt.savefig('outputs/'+str(epic)+'_ycentroid.pdf')
+
+	return ftot,xc, yc
