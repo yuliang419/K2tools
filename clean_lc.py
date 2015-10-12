@@ -24,6 +24,7 @@ def remove_thrust(time,flux,xc,yc):
 
   	return time, flux, xc, yc
 
+#choose from B-spline or median filter to remove outliers
 def clean_spline(x,y):
 	tck = itp.splrep(x,y,s=len(x)-sqrt(2*len(x)),k=3)
 	ymod = itp.splev(x,tck)
@@ -62,9 +63,15 @@ def spline(time,flux,xc,yc):
 			ychunk = ychunk[good]
 			j += 1
 
-		tck = itp.splrep(tchunk,fchunk,s=len(tchunk)-sqrt(2*len(tchunk)),k=3)
-		fmod = itp.splev(tchunk,tck)
-		plt.plot(tchunk,fchunk,lw=0,marker='.')
-		plt.plot(tchunk,fmod,color='r')
-		plt.show()
-	return tck
+		# tck = itp.splrep(tchunk,fchunk,s=len(tchunk)-sqrt(2*len(tchunk)),k=3)
+		# fmod = itp.splev(tchunk,tck)
+		# plt.plot(tchunk,fchunk,lw=0,marker='.')
+		# plt.plot(tchunk,fmod,color='r')
+		# plt.show()
+	
+		t_clean = concatenate((t_clean,tchunk))
+		f_clean = concatenate((f_clean,fchunk))
+		x_clean = concatenate((x_clean,xchunk))
+		y_clean = concatenate((y_clean,ychunk))
+
+	return t_clean, f_clean, x_clean, y_clean

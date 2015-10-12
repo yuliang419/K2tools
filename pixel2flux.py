@@ -94,6 +94,7 @@ def draw_aper(flux,aper,epic):
 	plt.xlim(0,aper.shape[1])
 	plt.ylim(0,aper.shape[0])
 	plt.savefig('outputs/'+str(epic)+'aper.pdf')
+	plt.close('all')
 
 	return seg	
 
@@ -137,11 +138,12 @@ def get_bg(time,flux,aper,epic,plot=True):
 	flagged = where(abs(bg-med)>3*sig)
 	if plot:
 		fig = plt.figure()
-		fig.clear()
+		fig.clf()
 		plt.plot(time,bg)
 		plt.xlabel('Time')
 		plt.ylabel('Background flux')
 		plt.savefig('outputs/'+str(epic)+'_bg.pdf')
+		plt.close(fig)
 
 	return bg, flagged
 
@@ -188,24 +190,27 @@ def plot_lc(time,flux,aper,epic):
 	xc = array(xc)
 	yc = array(yc)
 	fig = plt.figure()
-	fig.clear()
+	fig.clf()
 	plt.plot(time,ftot,marker='o')
 	plt.xlabel('Time')
 	plt.ylabel('Flux (pixel counts)')
 	plt.savefig('outputs/'+str(epic)+'_rawlc.pdf')
+	plt.close(fig)
 
 	fig = plt.figure()
-	fig.clear()
+	fig.clf()
 	plt.plot(time,yc)
 	plt.xlabel('Time')
 	plt.ylabel('Horizontal centroid shift (pixels)')
 	plt.savefig('outputs/'+str(epic)+'_ycentroid.pdf')
+	plt.close(fig)
 
 	fig = plt.figure()
-	fig.clear()
+	fig.clf()
 	plt.plot(time,xc)
 	plt.xlabel('Time')
 	plt.ylabel('Vertical centroid shift (pixels)')
 	plt.savefig('outputs/'+str(epic)+'_xcentroid.pdf')
+	plt.close(fig)
 
 	return time, ftot, xc, yc
