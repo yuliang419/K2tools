@@ -1,4 +1,3 @@
-import sys
 import matplotlib.pyplot as plt
 from numpy import *
 from scipy import ndimage as ndi
@@ -6,7 +5,6 @@ import pyfits
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max as plm
 from matplotlib.colors import LogNorm
-import os
 
 
 def read_pixel(epic,field,cad):
@@ -95,7 +93,7 @@ def draw_aper(flux,aper,epic):
 	plt.plot(seg[:,0],seg[:,1],color='r',zorder=10,lw=2.5)
 	plt.xlim(0,aper.shape[1])
 	plt.ylim(0,aper.shape[0])
-	plt.savefig('outputs/'+str(epic)+'.pdf')
+	plt.savefig('outputs/'+str(epic)+'aper.pdf')
 
 	return seg	
 
@@ -185,6 +183,10 @@ def plot_lc(time,flux,aper,epic):
 		xc.append(x)
 		yc.append(y)
 
+	ftot = array(ftot)
+	ftot /= median(ftot)
+	xc = array(xc)
+	yc = array(yc)
 	fig = plt.figure()
 	fig.clear()
 	plt.plot(time,ftot,marker='o')
@@ -194,9 +196,16 @@ def plot_lc(time,flux,aper,epic):
 
 	fig = plt.figure()
 	fig.clear()
-	plt.plot(time,yc,marker='o')
+	plt.plot(time,yc)
 	plt.xlabel('Time')
 	plt.ylabel('Horizontal centroid shift (pixels)')
 	plt.savefig('outputs/'+str(epic)+'_ycentroid.pdf')
 
-	return ftot,xc, yc
+	fig = plt.figure()
+	fig.clear()
+	plt.plot(time,xc)
+	plt.xlabel('Time')
+	plt.ylabel('Vertical centroid shift (pixels)')
+	plt.savefig('outputs/'+str(epic)+'_xcentroid.pdf')
+
+	return time, ftot, xc, yc
