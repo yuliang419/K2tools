@@ -5,6 +5,7 @@ import pyfits
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max as plm
 from matplotlib.colors import LogNorm
+from pylab import gray
 
 
 def read_pixel(epic,field,cad):
@@ -64,7 +65,7 @@ def find_aper(time,flux,cutoff_limit=3.5):
 def draw_aper(flux,aper,epic):
 	#input aperture from find_aper
 	fsum = nansum(flux,axis=0)
-	plt.imshow(fsum,norm=LogNorm(),interpolation='none')
+	plt.imshow(fsum,norm=LogNorm(),interpolation='none',cmap=gray())
 
 	#find edge pixels in each row
 	ver_seg = where(aper[:,1:] != aper[:,:-1])
@@ -191,7 +192,7 @@ def plot_lc(time,flux,aper,epic):
 	yc = array(yc)
 	fig = plt.figure()
 	fig.clf()
-	plt.plot(time,ftot,marker='o')
+	plt.plot(time,ftot,marker='.',lw=0)
 	plt.xlabel('Time')
 	plt.ylabel('Flux (pixel counts)')
 	plt.savefig('outputs/'+str(epic)+'_rawlc.pdf')
