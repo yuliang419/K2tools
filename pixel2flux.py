@@ -148,27 +148,8 @@ def get_bg(time,flux,aper,epic,plot=True):
 
 	return bg, flagged
 
-def get_centroid(f,aper):
-	#input flux of individual frames
-	flux = f*aper
-	f_tot = nansum(flux)
 
-	pos = where(flux > 0) #coords of pixels in aperture
-	x = pos[0]
-	y = pos[1]
-
-	xc = sum( flux[pos]*x )/f_tot
-	yc = sum( flux[pos]*y )/f_tot
-
-	# fig = plt.figure()
-	# fig.clear()
-	# plt.imshow(flux,norm=LogNorm(),interpolation='none')
-	# plt.plot([yc],[xc],marker='o',color='b')
-	# plt.show()	
-
-	return xc,yc
-
-def plot_lc(time,flux,aper,epic):
+def get_cen(time,flux,aper,epic):
 	bg, flags = get_bg(time,flux,aper,epic)
 	time = delete(time,flags)
 	flux = delete(flux,flags,axis=0)
@@ -177,14 +158,6 @@ def plot_lc(time,flux,aper,epic):
 	xc = []
 	yc = []
 	ftot = []
-
-	# for i in range(0,len(time)):
-	# 	f = array(flux[i])
-	# 	ftot.append(nansum(f*aper) - bg[i])
-
-	# 	x, y = get_centroid(f-bg[i],aper)
-	# 	xc.append(x)
-	# 	yc.append(y)
 
 	aperture_fluxes = flux*aper
   	
@@ -206,8 +179,12 @@ def plot_lc(time,flux,aper,epic):
   	ftot = f_t
 	ftot = array(ftot)
 	ftot /= median(ftot)
-	# xc = array(xc)
-	# yc = array(yc)
+
+	return time, ftot, xc, yc
+
+
+def plot_lc(time,ftot,xc,yc):
+	plt.close('all')
 	fig = plt.figure()
 	fig.clf()
 	plt.plot(time,ftot,marker='.',lw=0)
@@ -232,4 +209,4 @@ def plot_lc(time,flux,aper,epic):
 	plt.savefig('outputs/'+str(epic)+'_xcentroid.pdf')
 	plt.close(fig)
 
-	return time, ftot, xc, yc
+	
