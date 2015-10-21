@@ -41,7 +41,7 @@ def read_pixel(epic,field,cad):
 	return time, flux, kepmag, x, y
 
 
-def find_aper(time,flux,cutoff_limit=3.5):
+def find_aper(time,flux,cutoff_limit=3):
 	fsum = nansum(flux,axis=0) #sum over all images
 	cutoff = cutoff_limit*median(fsum)
 	aper = array([fsum > cutoff])
@@ -49,7 +49,7 @@ def find_aper(time,flux,cutoff_limit=3.5):
 	size = sum(aper) #total no. of pixels in aperture
 	min_dist = max([1,size**0.5/2])
 
-	local_max = plm(fsum,indices=False,min_distance=min_dist,exclude_border=False,threshold_rel=0.001) #threshold_rel determined by trial & error
+	local_max = plm(fsum,indices=False,min_distance=min_dist,exclude_border=False,threshold_rel=0.01) #threshold_rel determined by trial & error
 	markers = ndi.label(local_max)[0]
 
 	labels = watershed(fsum,markers,mask=aper[0])
@@ -178,18 +178,36 @@ def plot_lc(time,flux,aper,epic):
 	yc = []
 	ftot = []
 
-	for i in range(0,len(time)):
-		f = array(flux[i])
-		ftot.append(nansum(f*aper) - bg[i])
+	# for i in range(0,len(time)):
+	# 	f = array(flux[i])
+	# 	ftot.append(nansum(f*aper) - bg[i])
 
-		x, y = get_centroid(f,aper)
-		xc.append(x)
-		yc.append(y)
+	# 	x, y = get_centroid(f-bg[i],aper)
+	# 	xc.append(x)
+	# 	yc.append(y)
 
+	aperture_fluxes = flux*aper
+  	
+  	# sum over axis 2 and 1 (the X and Y positions), (axis 0 is the time)
+  	f_t = nansum(nansum(aperture_fluxes,axis=2), axis=1) - bg
+  
+ 	# first make a matrix that contains the x and y positions
+  	x_pixels = [range(0,shape(aperture_fluxes)[2])] * shape(aperture_fluxes)[1]
+  	y_pixels = transpose([range(0,shape(aperture_fluxes)[1])] * shape(aperture_fluxes)[2])
+  
+  	# multiply the position matrix with the aperture fluxes to obtain x_i*f_i and y_i*f_i
+  	xpos_times_flux = nansum( nansum( x_pixels*aperture_fluxes, axis=2), axis=1)
+  	ypos_times_flux = nansum( nansum( y_pixels*aperture_fluxes, axis=2), axis=1)
+  
+  	# calculate centroids
+  	xc = xpos_times_flux / f_t
+  	yc = ypos_times_flux / f_t
+
+  	ftot = f_t
 	ftot = array(ftot)
 	ftot /= median(ftot)
-	xc = array(xc)
-	yc = array(yc)
+	# xc = array(xc)
+	# yc = array(yc)
 	fig = plt.figure()
 	fig.clf()
 	plt.plot(time,ftot,marker='.',lw=0)

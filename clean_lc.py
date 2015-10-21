@@ -2,28 +2,30 @@ import matplotlib.pyplot as plt
 from numpy import *
 from scipy import ndimage as ndi
 from scipy import interpolate as itp
-from math import sqrt
 import warnings
+from scipy.integrate import quad
 # from lmfit import minimize, Parameters, report_errors, fit_report
 
 
 def remove_thrust(time,flux,xc,yc):
 
 	#find and remove points in middle of thruster events, divide LC into segments
-	diff_centroid = diff(xc)**2 + diff(yc)**2
+	diff_centroid = sqrt(diff(xc)**2 + diff(yc)**2)
+	sigma = std(diff_centroid)
 
-	thruster_mask = diff_centroid < 1.5*mean(diff_centroid) #True=gap not in middle of thruster event
+	thruster_mask = diff_centroid < mean(diff_centroid)+5*sigma #True=gap not in middle of thruster event
   	thruster_mask1 = insert(thruster_mask,0, False) #True=gap before is not thruster event
   	thruster_mask2 = append(thruster_mask,False) #True=gap after is not thruster event
   	thruster_mask = thruster_mask1*thruster_mask2 #True=gaps before and after are not thruster events
-  	# thruster_mask *= 1
 
-  	inds = where(thruster_mask == True)[0]
+  	time_thruster = time[ thruster_mask ]
+  	diff_centroid_thruster = diff_centroid[ thruster_mask[1:] ]
+  	
   	# print 'fire times', time[where(thruster_mask==False)[0]]
-  	time = time[inds]
-  	flux = flux[inds]
-  	xc = xc[inds]
-  	yc = yc[inds]
+  	xc = xc[thruster_mask]
+  	yc = yc[thruster_mask]
+  	time = time[thruster_mask]
+  	flux = flux[thruster_mask]
 
   	return time, flux, xc, yc
 
@@ -75,9 +77,12 @@ def spline(time,flux,xc,yc,squiggles=False):
 		else:
 			tck = itp.splrep(tchunk,fchunk,s=len(tchunk)-sqrt(2*len(tchunk)),k=3)
 		fmod = itp.splev(tchunk,tck)
+		
 		# plt.plot(tchunk,fchunk,lw=0,marker='.')
 		# plt.plot(tchunk,fmod,color='r')
 		# plt.show()
+
+		fchunk /= fmod
 	
 		t_clean = concatenate((t_clean,tchunk))
 		f_clean = concatenate((f_clean,fchunk))
@@ -111,7 +116,8 @@ def spline(time,flux,xc,yc,squiggles=False):
 
 # 	return array(flux-model)
 
-def fit_lc(time,flux,xc,yc,firetimes):
+
+def fit_lc(time,flux,xc,yc,firetimes,bins=20.):
 
 	# params = Parameters()
 	# params.add('x1',value=0.,vary=True)
@@ -130,6 +136,9 @@ def fit_lc(time,flux,xc,yc,firetimes):
 	# params.add('tamp',value=0.,vary=False)
 	# params.add('toff',value=0.,vary=False)
 	f_corr = []
+	t_corr = []
+	x_corr = []
+	y_corr = []
 
 	#firetimes gives times of thruster fires, so we take chunks that include integer numbers of drift segments
 	for i in range(0,len(firetimes)-1):
@@ -141,19 +150,48 @@ def fit_lc(time,flux,xc,yc,firetimes):
 		xchunk = xc[chunk]
 		ychunk = yc[chunk]
 
-		coeffs = polyfit(tchunk,fchunk,4)
-		mod = polyval(coeffs,tchunk)
+		# coeffs = polyfit(tchunk,fchunk,4)
+		# mod = polyval(coeffs,tchunk)
+		# fchunk -= mod
+		# fchunk /= median(fchunk)
 
+		#fit for x as function of y, then decorrelate against h
+		# res = polyfit(xchunk,ychunk,4)
+		# yfit = polyval(res,xchunk)
+		# s = (ychunk-(yfit-res[-1])) / sqrt(1.+res[-2]**2.)
+		# h = (res[-2]*ychunk+xchunk) / sqrt(1.+res[-2]**2.)
+
+		res = polyfit(ychunk,xchunk,4)
+		yfit = polyval(res,ychunk)
+		s = (xchunk-(yfit-res[-1])) / sqrt(1.+res[-2]**2.)
+		h = (res[-2]*xchunk+ychunk) / sqrt(1.+res[-2]**2.)
+
+		bins = arange(min(h),max(h),(max(h)-min(h))/bins)
+		med = []
+
+		for i in range(0,len(bins)-1):
+			fslice = fchunk[bins[i]:bins[i+1]]
+			med.append(median(fslice))
+		
+		h_binned = h[bins[0:-1]+binsize/2]
+
+		# fit = polyfit(h,fchunk,4)
+		# mod = polyval(fit,h)
 		# fit = minimize(residual, params, args=(tchunk,fchunk,xchunk,ychunk))
 		# fit = minimize(residual, params, args=(tchunk,fchunk,xchunk,ychunk))
 
 		# mod = fchunk - residual(params,tchunk,fchunk,xchunk,ychunk)
-	
-		f_corr += [list(array(fchunk)-mod)]
-		# plt.close('all')
-		# plt.plot(tchunk,fchunk,lw=0,marker='.')
-		# plt.plot(tchunk,mod,color='r',lw=2)
-		# plt.show()
+		plt.close('all')
+		plt.plot(h,fchunk,lw=0,marker='.')
+		plt.plot(h_binned,med,color='r')
+		plt.show()
 
-	f_corr = array(f_corr)/median(f_corr)
-	return f_corr
+		# fchunk -= mod
+
+		t_corr += list(tchunk)
+		f_corr += list(fchunk)
+		x_corr += list(xchunk)
+		y_corr += list(ychunk)
+
+
+	return array(t_corr),array(f_corr), array(x_corr), array(y_corr)
