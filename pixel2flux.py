@@ -9,6 +9,7 @@ from pylab import gray
 
 
 def read_pixel(epic,field,cad):
+
 	#cad = 'l' or 's'
 	filename = 'ktwo'+str(epic)+'-c0'+str(field)+'_'+cad+'pd-targ.fits'
 	#flux may contain nans
@@ -183,7 +184,7 @@ def get_cen(time,flux,aper,epic):
 	return time, ftot, xc, yc
 
 
-def plot_lc(time,ftot,xc,yc):
+def plot_lc(time,ftot,xc,yc,epic):
 	plt.close('all')
 	fig = plt.figure()
 	fig.clf()
