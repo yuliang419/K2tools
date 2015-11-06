@@ -152,6 +152,12 @@ def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref):
 		s = (yrefseg-(yfit-res[-1])) / sqrt(1.+res[-2]**2.)
 		h = (res[-2]*yrefseg+xrefseg) / sqrt(1.+res[-2]**2.)
 
+		plt.close('all')
+		plt.plot(tchunk,h,lw=0,marker='.')
+		plt.xlabel('t')
+		plt.ylabel('h')
+		plt.show()
+
 		j = 0
 
 		while j<3:
