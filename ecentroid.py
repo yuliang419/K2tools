@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from numpy import linspace, array
 from clean_lc import remove_thrust
 
-epic = 210303479
+epic = 210303168
 write = True
 t,f,k,x,y = read_pixel(epic,4,'l')
 labels = find_aper(t,f)
@@ -42,7 +42,7 @@ plt.show()
 
 
 if write:
-	file = open('ref_centroid.dat','w')
+	file = open('ref_centroid4.dat','w')
 	for i in range(0,len(xc)):
 		print>>file, t[i], xc[i], yc[i]
 	file.close()

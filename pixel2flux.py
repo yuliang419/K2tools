@@ -4,8 +4,8 @@ from scipy import ndimage as ndi
 import pyfits
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max as plm
+from math import floor
 from matplotlib.colors import LogNorm
-from pylab import gray
 
 
 def read_pixel(epic,field,cad):
@@ -39,7 +39,7 @@ def read_pixel(epic,field,cad):
 	if kepmag <= 10:
 		print 'WARNING: saturated target'
 
-	return time, flux, kepmag, x, y
+	return time, flux, kepmag, ra, dec
 
 
 def find_aper(time,flux,cutoff_limit=3):
@@ -48,12 +48,14 @@ def find_aper(time,flux,cutoff_limit=3):
 	aper = array([fsum > cutoff])
 	aper = 1*aper #arrays of 0s and 1s
 	size = sum(aper) #total no. of pixels in aperture
-	min_dist = max([1,size**0.5/2])
 
-	local_max = plm(fsum,indices=False,min_distance=min_dist,exclude_border=False,threshold_rel=0.01) #threshold_rel determined by trial & error
+	min_dist = max([1,size**0.5/pi-1])
+	# min_dist=1
+
+	local_max = plm(fsum,indices=False,min_distance=min_dist,exclude_border=False,threshold_rel=0.001) #threshold_rel determined by trial & error
 	markers = ndi.label(local_max)[0]
 
-	labels = watershed(fsum,markers,mask=aper[0])
+	labels = watershed(-fsum,markers,mask=aper[0])
 
 	#in case there are more than one maxima
 	if labels.max()>1:
@@ -66,7 +68,10 @@ def find_aper(time,flux,cutoff_limit=3):
 def draw_aper(flux,aper,epic):
 	#input aperture from find_aper
 	fsum = nansum(flux,axis=0)
-	plt.imshow(fsum,norm=LogNorm(),interpolation='none',cmap=gray())
+	plt.close('all')
+	fig = plt.figure(figsize=[8,8])
+	plt.imshow(fsum,norm=LogNorm(),interpolation='none')
+	plt.set_cmap('gray_r')
 
 	#find edge pixels in each row
 	ver_seg = where(aper[:,1:] != aper[:,:-1])
@@ -95,7 +100,7 @@ def draw_aper(flux,aper,epic):
 	plt.plot(seg[:,0],seg[:,1],color='r',zorder=10,lw=2.5)
 	plt.xlim(0,aper.shape[1])
 	plt.ylim(0,aper.shape[0])
-	plt.savefig('outputs/'+str(epic)+'aper.pdf')
+	plt.savefig('outputs/'+str(epic)+'aper.pdf',bbox_inches='tight')
 	plt.close('all')
 
 	return seg	
@@ -139,13 +144,13 @@ def get_bg(time,flux,aper,epic,plot=True):
 	# bg[where(isnan(bg)==1)] = 0
 	flagged = where(abs(bg-med)>3*sig)
 	if plot:
-		fig = plt.figure()
+		fig = plt.figure(figsize=(8,4))
 		fig.clf()
 		plt.plot(time,bg)
 		plt.xlabel('Time')
 		plt.ylabel('Background flux')
-		plt.savefig('outputs/'+str(epic)+'_bg.pdf')
-		plt.close(fig)
+		plt.title('Background flux')
+		plt.savefig('outputs/'+str(epic)+'_bg.pdf',bbox_inches='tight')
 
 	return bg, flagged
 
@@ -186,12 +191,13 @@ def get_cen(time,flux,aper,epic):
 
 def plot_lc(time,ftot,xc,yc,epic):
 	plt.close('all')
-	fig = plt.figure()
+	fig = plt.figure(figsize=(8,4))
 	fig.clf()
 	plt.plot(time,ftot,marker='.',lw=0)
 	plt.xlabel('Time')
 	plt.ylabel('Flux (pixel counts)')
-	plt.savefig('outputs/'+str(epic)+'_rawlc.pdf')
+	plt.title('Raw light curve')
+	plt.savefig('outputs/'+str(epic)+'_rawlc.pdf',bbox_inches='tight')
 	plt.close(fig)
 
 	fig = plt.figure()
@@ -199,7 +205,7 @@ def plot_lc(time,ftot,xc,yc,epic):
 	plt.plot(time,yc)
 	plt.xlabel('Time')
 	plt.ylabel('Horizontal centroid shift (pixels)')
-	plt.savefig('outputs/'+str(epic)+'_ycentroid.pdf')
+	plt.savefig('outputs/'+str(epic)+'_ycentroid.pdf',bbox_inches='tight')
 	plt.close(fig)
 
 	fig = plt.figure()
@@ -207,7 +213,7 @@ def plot_lc(time,ftot,xc,yc,epic):
 	plt.plot(time,xc)
 	plt.xlabel('Time')
 	plt.ylabel('Vertical centroid shift (pixels)')
-	plt.savefig('outputs/'+str(epic)+'_xcentroid.pdf')
+	plt.savefig('outputs/'+str(epic)+'_xcentroid.pdf',bbox_inches='tight')
 	plt.close(fig)
 
 	
