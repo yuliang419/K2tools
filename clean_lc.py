@@ -11,7 +11,8 @@ import urllib
 import matplotlib.image as mpimg
 
 def mad(data):
-	return median(abs(data - median(data)))
+	up = where(data>median(data))[0]
+	return median(abs(data[up] - median(data)))
 
 def remove_thrust(time,flux,xc,yc,printtimes=False):
 	#find and remove points in middle of thruster events, divide LC into segments
@@ -61,6 +62,7 @@ def spline(time,flux,tsegs,squiggles=False):
 	f_clean = array([])
 	segs = []
 
+
 	for i in range(0,len(tsegs)):
 		fig = plt.figure()
 		fig.clear()
@@ -71,11 +73,10 @@ def spline(time,flux,tsegs,squiggles=False):
 		tchunk = time[chunk]
 		fchunk = flux[chunk]
 
-		ind_knots = (linspace(3,len(tchunk)-3,20)).astype('int')
-		knots = tchunk[ind_knots]
-		# print 'knots', knots
-
-		if squiggles:
+		if squiggles or (i==6) or (i==0):
+			ind_knots = (linspace(3,len(tchunk)-3,20)).astype('int')
+			knots = tchunk[ind_knots]
+			# print 'knots', knots
 			tck = itp.splrep(tchunk,fchunk,t=knots)	
 		else:
 			tck = itp.splrep(tchunk,fchunk,s=len(tchunk)+sqrt(2*len(tchunk)))
@@ -83,25 +84,32 @@ def spline(time,flux,tsegs,squiggles=False):
 
 
 		#remove outliers, fit again
-		sig = std(fchunk-fmod)
-		good = where( abs(fmod-fchunk)<3*sig )[0]
-		ind_knots = (linspace(3,len(tchunk)-3,20)).astype('int')
-		knots = tchunk[ind_knots]
-		if squiggles:
-			tck = itp.splrep(tchunk[good],fchunk[good],t=knots)	
-		else:
-			tck = itp.splrep(tchunk[good],fchunk[good],s=len(tchunk[good])+sqrt(2*len(tchunk[good])))
-		fmod = itp.splev(tchunk,tck)
+		j = 0
+		while j<2:
+			sig = mad(fchunk-fmod)
+			good = where( abs(fmod-fchunk)<3*sig )[0]
 
+			if squiggles or (i==6) or (i==0):
+				ind_knots = (linspace(3,len(tchunk)-3,20)).astype('int')
+				knots = tchunk[ind_knots]
+				try:
+					tck = itp.splrep(tchunk[good],fchunk[good],t=knots)	
+				except ValueError:
+					tck = itp.splrep(tchunk[good],fchunk[good],s=len(tchunk[good])-3*sqrt(2*len(tchunk[good])))
+			else:
+				tck = itp.splrep(tchunk[good],fchunk[good],s=len(tchunk[good])+sqrt(2*len(tchunk[good])))
+			fmod = itp.splev(tchunk,tck)
+			j += 1
 
-		# plt.close('all')
-		# plt.plot(tchunk,fchunk,lw=0,marker='.')
-		# plt.plot(tchunk,fmod)
-		# plt.title('Spline fit (the real one!)')
-		# plt.gca().get_xaxis().get_major_formatter().set_useOffset(False)
-		# plt.xlabel('Time')
-		# plt.ylabel('Flux')
-		# plt.show()
+			# plt.close('all')
+			# plt.plot(tchunk,fchunk,lw=0,marker='.')
+			# plt.plot(tchunk,fmod)
+			# plt.title('Spline fit (the real one!)')
+			# plt.gca().get_xaxis().get_major_formatter().set_useOffset(False)
+			# plt.xlabel('Time')
+			# plt.ylabel('Flux')
+			# plt.show()
+
 		fchunk -= array(fmod)
 		fchunk += 1
 
@@ -116,10 +124,10 @@ def spline(time,flux,tsegs,squiggles=False):
 
 
 	# plt.close('all')
-	# plt.plot(t_clean,f_clean,lw=0,marker='.')
+	# plt.plot(t_clean,stellar_act,lw=0,marker='.')
 	# plt.xlabel('Time')
 	# plt.ylabel('Flux')
-	# plt.title('Time variability removed')
+	# plt.title('Stellar variability')
 	# plt.show()
 
 	return t_clean, f_clean, segs
@@ -183,6 +191,7 @@ def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref):
 	x_corr = []
 	y_corr = []
 
+
 	#firetimes gives times of thruster fires, so we take chunks that include integer numbers of drift segments
 	for tseg in tsegs:
 		warnings.simplefilter('ignore', RankWarning)
@@ -202,19 +211,21 @@ def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref):
 			xrefseg.append(xref[ind][0])
 			yrefseg.append(yref[ind][0])
 
-		xrefseg = array(xrefseg)
-		yrefseg = array(yrefseg)
-		# plt.close('all')
-		# plt.plot(xrefseg,yrefseg,lw=0,marker='.')
+		xrefseg = array(xrefseg) 
+		yrefseg = array(yrefseg) 
+		plt.close('all')
+		plt.plot(xrefseg,yrefseg,lw=0,marker='.')
 
-		res = polyfit(xrefseg,yrefseg,4)
+		res = polyfit(xrefseg,yrefseg,1)
 		yfit = polyval(res,xrefseg)
+
 
 		# plt.show()
 		s = (yrefseg-(yfit-res[-1])) / sqrt(1.+res[-2]**2.)
 		h = (res[-2]*yrefseg+xrefseg) / sqrt(1.+res[-2]**2.)
 
 		j = 0
+		fchunk /= median(fchunk)
 
 		while j<2:
 			fit = robust_fit(h,fchunk)
@@ -225,18 +236,24 @@ def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref):
 			# plt.plot(h,fit,color='r',lw=0,marker='o')
 			# plt.show()
 
-			fchunk /= fit
+			fchunk -= fit
+			fchunk += 1
+
+
+			fit = robust_fit(tchunk,fchunk)
+
+			# plt.close('all')
+			# plt.plot(tchunk,fchunk,lw=0,marker='.')
+			# plt.title('Decorrelation against time')
+			# plt.gca().get_xaxis().get_major_formatter().set_useOffset(False)
+			# plt.plot(tchunk,fit,color='r',lw=0,marker='o')
+			# plt.show()
+			fchunk -= fit
+			fchunk += 1
 			j += 1
 
-		fit = robust_fit(tchunk,fchunk)
-
-		# plt.close('all')
-		# plt.plot(tchunk,fchunk,lw=0,marker='.')
-		# plt.title('Decorrelation against time')
-		# plt.gca().get_xaxis().get_major_formatter().set_useOffset(False)
-		# plt.plot(tchunk,fit,color='r',lw=0,marker='o')
-		# plt.show()
-		fchunk /= fit
+		
+		# fchunk += 1
 
 		t_corr += list(tchunk)
 		f_corr += list(fchunk)
@@ -279,7 +296,7 @@ def pdf(epic):
 
 	obj = PdfFileReader(file(epic+'_chart.pdf','rb'))
 	page1 = obj.getPage(0)
-	page.mergeScaledTranslatedPage(page1,scale=0.8,tx=150,ty=-70)
+	page.mergeScaledTranslatedPage(page1,scale=0.8,tx=150,ty=-60)
 
 	obj = PdfFileReader(file(epic+'_params.pdf','rb'))
 	page1 = obj.getPage(0)
@@ -287,28 +304,34 @@ def pdf(epic):
 
 	obj = PdfFileReader(file(epic+'aper.pdf','rb'))
 	page1 = obj.getPage(0)
-	page.mergeScaledTranslatedPage(page1,scale=0.18,tx=70,ty=210)
-
-	obj = PdfFileReader(file(epic+'_rawlc.pdf','rb'))
-	page1 = obj.getPage(0)
-	page.mergeScaledTranslatedPage(page1,scale=0.25,tx=10,ty=120)
+	page.mergeScaledTranslatedPage(page1,scale=0.17,tx=70,ty=210)
 
 	obj = PdfFileReader(file(epic+'_cleanlc_squiggles.pdf','rb'))
 	page1 = obj.getPage(0)
-	page.mergeScaledTranslatedPage(page1,scale=0.23,tx=170,ty=225)
+	page.mergeScaledTranslatedPage(page1,scale=0.25,tx=10,ty=140)
 
-	obj = PdfFileReader(file(epic+'_cleanlc.pdf','rb'))
+	obj = PdfFileReader(file(epic+'_rawlc.pdf','rb'))
 	page1 = obj.getPage(0)
-	page.mergeScaledTranslatedPage(page1,scale=0.23,tx=290,ty=225)
+	page.mergeScaledTranslatedPage(page1,scale=0.25,tx=155,ty=225)
 
 	obj = PdfFileReader(file(epic+'_bg.pdf','rb'))
 	page1 = obj.getPage(0)
-	page.mergeScaledTranslatedPage(page1,scale=0.25,tx=10,ty=40)
+	page.mergeScaledTranslatedPage(page1,scale=0.25,tx=290,ty=225)
+
+	obj = PdfFileReader(file(epic+'_cleanlc.pdf','rb'))
+	page1 = obj.getPage(0)
+	page.mergeScaledTranslatedPage(page1,scale=0.25,tx=10,ty=75)
+
+	# obj = PdfFileReader(file(epic+'_cleanlc.pdf','rb'))
+	# page1 = obj.getPage(0)
+	# page.mergeScaledTranslatedPage(page1,scale=0.25,tx=10,ty=10)
 
 	trash = glob.glob(epic+'*.pdf')
 	for f in trash:
 		os.remove(f)
+	os.remove(epic+'_chart.png')
 		
 	outstream = file(epic+'summary.pdf','wb')
 	output.write(outstream)
 	outstream.close()
+	os.chdir('..')

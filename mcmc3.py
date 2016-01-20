@@ -106,10 +106,15 @@ def run_mcmc(epic,transit_params,period,times,data,sigma,nwalkers=100,nthread=1,
 
 	model2 = interp(timearr,times,model)
 
+	dt = linspace(min(times),max(times),100)
+	model = model_transits.modeltransit(params,model_transits.occultquad,period,dt)
+
 	plt.close('all')
 	fig = plt.figure(figsize=(11,5))
 	plt.plot(times*24,data,lw=0,marker='.')
-	plt.plot(timearr*24.,model2,color='r')
+	plt.plot(dt*24.,model,color='g',ls='--',lw=1.5)
+	plt.plot(timearr*24.,model2,color='r',lw=1.5)
+
 	plt.xlabel('Time from midtransit (hours)')
 	plt.ylabel('Relative flux')
 	plt.savefig('outputs/'+epic+'_7final.pdf',dpi=150,bbox_inches='tight')

@@ -11,7 +11,7 @@ from matplotlib.colors import LogNorm
 def read_pixel(epic,field,cad):
 
 	#cad = 'l' or 's'
-	filename = 'ktwo'+str(epic)+'-c0'+str(field)+'_'+cad+'pd-targ.fits'
+	filename = 'pixel_files/ktwo'+str(epic)+'-c0'+str(field)+'_'+cad+'pd-targ.fits'
 	#flux may contain nans
 
 	hdulist = pyfits.open(filename)
@@ -32,46 +32,61 @@ def read_pixel(epic,field,cad):
 	ra = hdulist[0].header['RA_OBJ']
 	dec = hdulist[0].header['DEC_OBJ']
 
-	heading = '#epic  kepmag  ra  dec'
-	dat = [epic, kepmag, ra, dec]
-	savetxt('outputs/'+str(epic)+'info.txt',dat,header=heading,fmt='%s')
-
 	if kepmag <= 10:
 		print 'WARNING: saturated target'
 
 	return time, flux, kepmag, ra, dec
 
 
-def find_aper(time,flux,cutoff_limit=3):
+def find_aper(time,flux,cutoff_limit=3,saturated=False):
 	fsum = nansum(flux,axis=0) #sum over all images
+	fsum -= min(fsum.ravel())
 	cutoff = cutoff_limit*median(fsum)
 	aper = array([fsum > cutoff])
 	aper = 1*aper #arrays of 0s and 1s
+	while sum(aper)==0:
+		cutoff_limit -= 0.5
+		print cutoff_limit
+		cutoff = cutoff_limit*median(fsum)
+		aper = array([fsum > cutoff])
+		aper = 1*aper #arrays of 0s and 1s
 	size = sum(aper) #total no. of pixels in aperture
 
-	min_dist = max([1,size**0.5/pi-1])
+	if saturated:
+		min_dist = aper.shape[1]/2
+	else:
+		min_dist = max([1,size**0.5/2.5])
+
 	# min_dist=1
 
 	local_max = plm(fsum,indices=False,min_distance=min_dist,exclude_border=False,threshold_rel=0.001) #threshold_rel determined by trial & error
-	markers = ndi.label(local_max)[0]
+	coords = plm(fsum,indices=True,min_distance=min_dist,exclude_border=False,threshold_rel=0.001)
 
+	dist = 100
+	markers = ndi.label(local_max)[0]
 	labels = watershed(-fsum,markers,mask=aper[0])
+	for coord in coords:
+		newdist = ((coord[0]-aper.shape[1]/2.)**2+(coord[1]-aper.shape[2]/2.)**2)**0.5
+		if (newdist<dist) and (markers[coord[0],coord[1]] in unique(labels)):
+			centnum = markers[coord[0],coord[1]]
+			dist = newdist
 
 	#in case there are more than one maxima
-	if labels.max()>1:
-		area = ndi.measurements.sum(aper,labels,index=arange(labels.max()+1))
-		ind = where(area == max(area)) #pick out index with max area
-		labels = 1*(labels==ind)
+	if len(unique(labels))>2:
+		labels = 1*(labels==centnum)
+
+	labels /= labels.max()
 
 	return labels
 
 def draw_aper(flux,aper,epic):
 	#input aperture from find_aper
 	fsum = nansum(flux,axis=0)
+	fsum -= min(fsum.ravel())
 	plt.close('all')
-	fig = plt.figure(figsize=[8,8])
+	fig = plt.figure(figsize=(8,8))
 	plt.imshow(fsum,norm=LogNorm(),interpolation='none')
-	plt.set_cmap('gray_r')
+	plt.set_cmap('gray')
 
 	#find edge pixels in each row
 	ver_seg = where(aper[:,1:] != aper[:,:-1])
@@ -144,7 +159,7 @@ def get_bg(time,flux,aper,epic,plot=True):
 	# bg[where(isnan(bg)==1)] = 0
 	flagged = where(abs(bg-med)>3*sig)
 	if plot:
-		fig = plt.figure(figsize=(8,4))
+		fig = plt.figure(figsize=(8,3))
 		fig.clf()
 		plt.plot(time,bg)
 		plt.xlabel('Time')
@@ -191,7 +206,7 @@ def get_cen(time,flux,aper,epic):
 
 def plot_lc(time,ftot,xc,yc,epic):
 	plt.close('all')
-	fig = plt.figure(figsize=(8,4))
+	fig = plt.figure(figsize=(8,3))
 	fig.clf()
 	plt.plot(time,ftot,marker='.',lw=0)
 	plt.xlabel('Time')

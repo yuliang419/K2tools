@@ -31,9 +31,9 @@ def readlc(epic,p,t0):
 	#read in data for given epic 
 	target = 'DecorrelatedPhotometry/LCfluxesepic'+str(epic)+'star00.txt'
 	t, f, seg = loadtxt(target,unpack=True) #dt=HJD-2454900
-	# good = where(seg!=4)[0]
-	# t = t[good]
-	# f = f[good]
+	good = where(seg!=0)[0]
+	t = t[good]
+	f = f[good]
 
 	plt.close('all')
 	fig, ax = plt.subplots(2,figsize=(8,7))
@@ -66,7 +66,13 @@ def readlc(epic,p,t0):
 	ax[1].set_ylim(min(f),1.005)
 
 	res = f_sorted - fmod
-	res, [f_sorted, t_sorted, phase] = sigma_clip(7,res,f_sorted,t_sorted,phase)
+	sigma = std(res)
+
+	# res, [f_sorted, t_sorted, phase] = sigma_clip(7,res,f_sorted,t_sorted,phase)
+	good = where(res<3*sigma)
+	f_sorted = f_sorted[good]
+	t_sorted = t_sorted[good]
+	phase = phase[good]
 	ax[1].plot(phase,f_sorted,color='b',lw=0,marker='.')
 	ax[1].get_yaxis().get_major_formatter().set_useOffset(False)
 	plt.savefig('outputs/'+epic+'_1firstcut.pdf',dpi=150,bbox_inches='tight')
@@ -340,7 +346,35 @@ def allparams(epic,dat):
 def merge(epic):
 	os.chdir('outputs/')
 	output = PdfFileWriter()
-	page = output.addBlankPage(width=420,height=297)
+	page0 = output.addBlankPage(width=420,height=297)
+
+	# obj = PdfFileReader(file(epic+'_chart.pdf','rb'))
+	# page1 = obj.getPage(0)
+	# page0.mergeScaledTranslatedPage(page1,scale=0.8,tx=150,ty=-60)
+
+	# obj = PdfFileReader(file(epic+'_params.pdf','rb'))
+	# page1 = obj.getPage(0)
+	# page0.mergeScaledTranslatedPage(page1,scale=0.18,tx=0,ty=180)
+
+	# obj = PdfFileReader(file(epic+'aper.pdf','rb'))
+	# page1 = obj.getPage(0)
+	# page0.mergeScaledTranslatedPage(page1,scale=0.17,tx=70,ty=210)
+
+	# obj = PdfFileReader(file(epic+'_cleanlc_squiggles.pdf','rb'))
+	# page1 = obj.getPage(0)
+	# page0.mergeScaledTranslatedPage(page1,scale=0.25,tx=10,ty=140)
+
+	# obj = PdfFileReader(file(epic+'_rawlc.pdf','rb'))
+	# page1 = obj.getPage(0)
+	# page0.mergeScaledTranslatedPage(page1,scale=0.25,tx=155,ty=225)
+
+	# obj = PdfFileReader(file(epic+'_bg.pdf','rb'))
+	# page1 = obj.getPage(0)
+	# page0.mergeScaledTranslatedPage(page1,scale=0.25,tx=290,ty=225)
+
+	# obj = PdfFileReader(file(epic+'_cleanlc.pdf','rb'))
+	# page1 = obj.getPage(0)
+	# page0.mergeScaledTranslatedPage(page1,scale=0.25,tx=10,ty=75)
 
 	urllib.urlretrieve('https://cfop.ipac.caltech.edu/k2/files/'+epic+'/Finding_Chart/'+epic+'F-mc20150630.png',epic+'_chart.png')
 	img = mpimg.imread(epic+'_chart.png')
@@ -349,9 +383,14 @@ def merge(epic):
 	plt.axis('off')
 	plt.savefig(epic+'_chart.pdf',dpi=250,bbox_inches='tight')
 
-	obj = PdfFileReader(file(epic+'_chart.pdf','rb'))
+	page = output.addBlankPage(width=420,height=297)
+	obj = PdfFileReader(file(epic+'_fit.pdf','rb'))
 	page1 = obj.getPage(0)
-	page.mergeScaledTranslatedPage(page1,scale=0.8,tx=150,ty=-80)
+	page.mergeScaledTranslatedPage(page1,scale=0.35,tx=150,ty=70)
+
+	obj = PdfFileReader(file(epic+'_sed.pdf','rb'))
+	page1 = obj.getPage(0)
+	page.mergeScaledTranslatedPage(page1,scale=0.3,tx=170,ty=30)
 
 	obj = PdfFileReader(file(epic+'_1firstcut.pdf','rb'))
 	page1 = obj.getPage(0)
@@ -383,15 +422,18 @@ def merge(epic):
 	 	page2.mergeScaledTranslatedPage(page1,scale=0.35,tx=(i%3)*140,ty=20)
 	 	i += 1
 
-	page3 = output.addBlankPage(width=420,height=297)
-	obj = PdfFileReader(file(epic+'_fit.pdf','rb'))
-	page1 = obj.getPage(0)
-	page3.mergeScaledTranslatedPage(page1,scale=0.35,tx=160,ty=120)
-	obj = PdfFileReader(file(epic+'_sed.pdf','rb'))
-	page1 = obj.getPage(0)
-	page3.mergeScaledTranslatedPage(page1,scale=0.3,tx=0,ty=155)
+	# page3 = output.addBlankPage(width=420,height=297)
+	# obj = PdfFileReader(file(epic+'_fit.pdf','rb'))
+	# page1 = obj.getPage(0)
+	# page3.mergeScaledTranslatedPage(page1,scale=0.35,tx=160,ty=120)
+	# obj = PdfFileReader(file(epic+'_sed.pdf','rb'))
+	# page1 = obj.getPage(0)
+	# page3.mergeScaledTranslatedPage(page1,scale=0.3,tx=0,ty=155)
 
-
+	trash = glob.glob(epic+'*.pdf')
+	for f in trash:
+		os.remove(f)
+	os.remove(epic+'_chart.png')
 		
 	outstream = file(epic+'summary.pdf','wb')
 	output.write(outstream)

@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 from numpy import linspace, array
 from clean_lc import remove_thrust
 
-epic = 210303168
+epic = 211303922
 write = True
-t,f,k,x,y = read_pixel(epic,4,'l')
+t,f,k,x,y = read_pixel(epic,5,'l')
 labels = find_aper(t,f)
 seg = draw_aper(f,labels,epic)
 t,f = remove_nan(t,f)

@@ -4,8 +4,8 @@ from lctools import *
 from mcmc3 import *
 from vizier import sed
 
-epic = '210490365'
-# name = '211413752c'
+epic = '211418729'
+# name = '211331236b'
 print 'Working on candidate',epic
 file = open('f5candidates.dat','r')
 for line in file.readlines():
@@ -19,7 +19,7 @@ for line in file.readlines():
 		dec = cols[5]
 		break
 
-badlist = [3,6,10,16,19]
+badlist = []
 t,f0,newphase,w,depth = readlc(epic,initperiod,t0)
 excludewindow = 3*abs(w)*initperiod
 print 'excludewindow=',excludewindow
