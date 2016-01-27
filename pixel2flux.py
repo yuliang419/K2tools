@@ -55,12 +55,12 @@ def find_aper(time,flux,cutoff_limit=3,saturated=False):
 	if saturated:
 		min_dist = aper.shape[1]/2
 	else:
-		min_dist = max([1,size**0.5/2.5])
+		min_dist = max([1,size**0.5/2.7])
 
 	# min_dist=1
 
-	local_max = plm(fsum,indices=False,min_distance=min_dist,exclude_border=False,threshold_rel=0.001) #threshold_rel determined by trial & error
-	coords = plm(fsum,indices=True,min_distance=min_dist,exclude_border=False,threshold_rel=0.001)
+	local_max = plm(fsum,indices=False,min_distance=min_dist,exclude_border=False,threshold_rel=0.0005) #threshold_rel determined by trial & error
+	coords = plm(fsum,indices=True,min_distance=min_dist,exclude_border=False,threshold_rel=0.0005)
 
 	dist = 100
 	markers = ndi.label(local_max)[0]

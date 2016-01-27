@@ -7,8 +7,9 @@ plt.ioff()
 
 targs = open('pixel_files/targs.dat','r')
 failed = []
-tsegs = [[2306,2310.4523],[2310.4523,2315.3561],[2315.3561,2320.3007],[2320.3007,2328.3508],[2328.3528,2333.99],[2333.99,2339.9151],[2339.9151,2344.7975],[2344.7975,2350.171],[2350.171,2355.2303],\
-[2355.3403,2361.4493],[2361.4493,2368.8047],[2368.8047,2376.1602],[2376.1602,2381.4316]]
+tsegs = [[2144.103,2151.8672],[2151.8672,2157.2613],[2157.2613,2165.6383],[2165.6383,2173.4841],[2173.4841,2180.3283],\
+[2180.3283,2187.2142],[2187.2142,2190.6058],[2190.6058,2197.716],\
+[2197.716,2201.884],[2201.884,2206.2973],[2206.2973,2215]]
 out = open('precision.dat','w')
 
 for line in targs.readlines():
@@ -18,10 +19,10 @@ for line in targs.readlines():
 	
 	print 'Working on target '+str(epic)
 
-	tref,xref,yref = read_ref('ref_centroid5.dat')
+	tref,xref,yref = read_ref('ref_centroid.dat')
 
 	try:
-		t,f,k,ra,dec = read_pixel(epic,5,'l')
+		t,f,k,ra,dec = read_pixel(epic,3,'l')
 	except IOError:
 		print 'Bad FITS file'
 		continue
@@ -58,7 +59,6 @@ for line in targs.readlines():
 	# tsegs = [[2231.4154,2238.5667],[2238.5667,2243.4499],[2243.4499,2251.6839],[2251.6839,2260.8577],[2260.8577,2268.6831],[2268.6831,2275.0782],\
 	# [2275.0782,2282.6586],[2282.6586,2290.2591],[2290.2591,t[-1]]]
 
-
 	t1,ftot1,segs1 = spline(t,ftot,tsegs,squiggles=True)
 	t1,f_corr1,xc1,yc1 = fit_lc(t1,ftot1,xc,yc,tsegs,tref,xref,yref)
 	plt.close('all')
@@ -71,7 +71,8 @@ for line in targs.readlines():
 	plt.gca().get_yaxis().get_major_formatter().set_useOffset(False)
 	plt.savefig('outputs/'+str(epic)+'_cleanlc_squiggles.pdf',bbox_inches='tight')
 
-	t3,ftot3,segs3 = spline(t,ftot,tsegs,squiggles=False)
+
+	t3,ftot3,segs3 = spline(t,ftot,tsegs)
 	t3,f_corr3,xc3,yc3 = fit_lc(t3,ftot3,xc,yc,tsegs,tref,xref,yref)
 	plt.close('all')
 	plt.clf()
@@ -101,11 +102,10 @@ for line in targs.readlines():
 		segs = segs3
 		squiggle_note = 'chosen non-aggressive'
 
+	error = std(f_corr3)
+	good = where(abs(f_corr3-1)<3*error)
+	error = std(f_corr3[good])
 	print squiggle_note
-	error = std(f_corr)
-	good = where(abs(f_corr-1)<3*error)
-	error = std(f_corr[good])
-
 
 
 	# plt.close('all')

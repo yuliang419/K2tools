@@ -37,23 +37,6 @@ def remove_thrust(time,flux,xc,yc,printtimes=False):
 
   	return time, flux, xc, yc, firetimes
 
-#choose from B-spline or median filter to remove outliers
-def clean_spline(x,y,squiggles):
-	ind_knots = (linspace(4,len(x)-4,5)).astype('int')
-	knots = x[ind_knots]
-	if squiggles:
-		tck = itp.splrep(x,y,t=knots)
-	else:
-		tck = itp.splrep(x,y,s=len(x)+sqrt(2*len(x)))
-	ymod = itp.splev(x,tck)
-	plt.close('all')
-	plt.plot(x,y,lw=0,marker='.')
-	plt.plot(x,ymod,color='r')
-	plt.show()
-	sig = std(y-ymod)
-	good = where( abs(y-ymod) < 5*sig )[0]
-	return good
-
 def spline(time,flux,tsegs,squiggles=False):
 	#fit B-spline to light curve, remove outliers. Set squiggles=True for high stellar variability
 	#takes really long for short cadence
@@ -73,13 +56,13 @@ def spline(time,flux,tsegs,squiggles=False):
 		tchunk = time[chunk]
 		fchunk = flux[chunk]
 
-		if squiggles or (i==6) or (i==0):
-			ind_knots = (linspace(3,len(tchunk)-3,20)).astype('int')
+		if squiggles:
+			ind_knots = (linspace(3,len(tchunk)-3,15)).astype('int')
 			knots = tchunk[ind_knots]
 			# print 'knots', knots
 			tck = itp.splrep(tchunk,fchunk,t=knots)	
 		else:
-			tck = itp.splrep(tchunk,fchunk,s=len(tchunk)+sqrt(2*len(tchunk)))
+			tck = itp.splrep(tchunk,fchunk,s=len(tchunk)) #+sqrt(2*len(tchunk)))
 		fmod = itp.splev(tchunk,tck)
 
 
@@ -88,9 +71,8 @@ def spline(time,flux,tsegs,squiggles=False):
 		while j<2:
 			sig = mad(fchunk-fmod)
 			good = where( abs(fmod-fchunk)<3*sig )[0]
-
-			if squiggles or (i==6) or (i==0):
-				ind_knots = (linspace(3,len(tchunk)-3,20)).astype('int')
+			if squiggles:
+				ind_knots = (linspace(3,len(tchunk)-3,15)).astype('int')
 				knots = tchunk[ind_knots]
 				try:
 					tck = itp.splrep(tchunk[good],fchunk[good],t=knots)	
@@ -99,12 +81,13 @@ def spline(time,flux,tsegs,squiggles=False):
 			else:
 				tck = itp.splrep(tchunk[good],fchunk[good],s=len(tchunk[good])+sqrt(2*len(tchunk[good])))
 			fmod = itp.splev(tchunk,tck)
+			
 			j += 1
 
 			# plt.close('all')
 			# plt.plot(tchunk,fchunk,lw=0,marker='.')
 			# plt.plot(tchunk,fmod)
-			# plt.title('Spline fit (the real one!)')
+			# plt.title('Spline fit '+str(seg[0]))
 			# plt.gca().get_xaxis().get_major_formatter().set_useOffset(False)
 			# plt.xlabel('Time')
 			# plt.ylabel('Flux')
@@ -151,18 +134,18 @@ def read_ref(filename='ref_centroid.dat'):
 	return tref, xref, yref
 
 def robust_fit(x,y,poly=True):
+	order = [i[0] for i in sorted(enumerate(x), key=lambda k:k[1])]
 	if poly:
 		coeff = polyfit(x,y,4)
 		yfit = polyval(coeff,x)
 	else:
-		binsize = (max(x)-min(x))/10.
-		xbins = linspace(min(x)-0.01,max(x)+binsize/2.,11)
-		ymed = []
-		for i in range(0,len(xbins)-1):
-			inds = where( (x>=xbins[i]) & (x<xbins[i+1]) )[0]
-			ymed.append(median(y[inds]))
-		xfit = xbins[0:-1]+ (max(x)-min(x)+0.02)/20.
-		yfit = interp(x,xfit,ymed)
+		ind_knots = (linspace(2,len(x)-2,13)).astype('int')
+		knots = x[order][ind_knots]
+		# print 'knots', knots
+
+		tck = itp.splrep(x[order],y[order],t=knots)
+		yfit= itp.splev(x,tck)	
+
 
 	res = y-yfit
 	sigma = std(res)
@@ -170,21 +153,30 @@ def robust_fit(x,y,poly=True):
 
 	x_good = x[good]
 	y_good = y[good]
+	order = [i[0] for i in sorted(enumerate(x_good), key=lambda k:k[1])]
 
 	if poly:
 		coeffs = polyfit(x_good,y_good,4)
 		yfit = polyval(coeffs,x)
 	else:
-		ymed = []
-		for i in range(0,len(xbins)-1):
-			inds = where( (x_good>=xbins[i]) & (x_good<xbins[i+1]) )[0]
-			ymed.append(median(y_good[inds]))
-		yfit = interp(x,xfit,ymed)
+		ind_knots = (linspace(3,len(good)-3,13)).astype('int')
+		knots = x_good[order][ind_knots]
+		# print 'knots', knots
+		try:
+			tck = itp.splrep(x_good[order],y_good[order],t=knots)
+		except ValueError:
+			tck = itp.splrep(x_good[order],y_good[order],s=len(x[good])-3*sqrt(2*len(x[good])))
+		yfit= itp.splev(x,tck)
 
 	return yfit
 
+def robust_std(data):
+	sig = std(data)
+	good = where(abs(data)<3*sig)
+	sig = std(data[good])
+	return sig
 
-def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref):
+def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref,plot=False):
 
 	f_corr = []
 	t_corr = []
@@ -227,29 +219,46 @@ def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref):
 		j = 0
 		fchunk /= median(fchunk)
 
+
 		while j<2:
-			fit = robust_fit(h,fchunk)
-			
-			# plt.close('all')
-			# plt.plot(h,fchunk,lw=0,marker='.')
-			# plt.title('Arclength')
-			# plt.plot(h,fit,color='r',lw=0,marker='o')
-			# plt.show()
+			fit1 = robust_fit(h,fchunk)
+			fit2 = robust_fit(h,fchunk,poly=False)
+			sig1 = robust_std(fchunk-fit1)
+			sig2 = robust_std(fchunk-fit2)
+
+			if sig1>sig2*1.3: #prevent overfitting. don't use spline unless it's much better
+				fit = fit2
+			else:
+				fit = fit1
+			if plot:
+				plt.close('all')
+				plt.plot(h,fchunk,lw=0,marker='.')
+				plt.title('Arclength '+str(tseg[0]))
+				plt.plot(h,fit,color='r',lw=0,marker='o')
+				plt.show()
 
 			fchunk -= fit
 			fchunk += 1
 
+			fit1 = robust_fit(tchunk,fchunk)
+			fit2 = robust_fit(tchunk,fchunk,poly=False)
+			sig1 = robust_std(fchunk-fit1)
+			sig2 = robust_std(fchunk-fit2)
+			if sig1>sig2*1.3: #prevent overfitting. don't use spline unless it's much better
+				fit = fit2
+			else:
+				fit = fit1
 
-			fit = robust_fit(tchunk,fchunk)
-
-			# plt.close('all')
-			# plt.plot(tchunk,fchunk,lw=0,marker='.')
-			# plt.title('Decorrelation against time')
-			# plt.gca().get_xaxis().get_major_formatter().set_useOffset(False)
-			# plt.plot(tchunk,fit,color='r',lw=0,marker='o')
-			# plt.show()
+			if plot:
+				plt.close('all')
+				plt.plot(tchunk,fchunk,lw=0,marker='.')
+				plt.title('Decorrelation against time '+str(tseg[0]))
+				plt.gca().get_xaxis().get_major_formatter().set_useOffset(False)
+				plt.plot(tchunk,fit,color='r',lw=0,marker='o')
+				plt.show()
 			fchunk -= fit
 			fchunk += 1
+
 			j += 1
 
 		
