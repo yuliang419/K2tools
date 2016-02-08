@@ -44,8 +44,9 @@ def find_aper(time,flux,cutoff_limit=3,saturated=False):
 	cutoff = cutoff_limit*median(fsum)
 	aper = array([fsum > cutoff])
 	aper = 1*aper #arrays of 0s and 1s
-	while sum(aper)==0:
-		cutoff_limit -= 0.5
+	while sum(aper)<=1:
+		print 'bad aper'
+		cutoff_limit -= 0.2
 		print cutoff_limit
 		cutoff = cutoff_limit*median(fsum)
 		aper = array([fsum > cutoff])
@@ -65,6 +66,7 @@ def find_aper(time,flux,cutoff_limit=3,saturated=False):
 	dist = 100
 	markers = ndi.label(local_max)[0]
 	labels = watershed(-fsum,markers,mask=aper[0])
+
 	for coord in coords:
 		newdist = ((coord[0]-aper.shape[1]/2.)**2+(coord[1]-aper.shape[2]/2.)**2)**0.5
 		if (newdist<dist) and (markers[coord[0],coord[1]] in unique(labels)):
@@ -76,8 +78,24 @@ def find_aper(time,flux,cutoff_limit=3,saturated=False):
 		labels = 1*(labels==centnum)
 
 	labels /= labels.max()
+	while sum(labels)<=1:
+		cutoff_limit -= 0.2
+		labels = find_aper(time,flux,cutoff_limit=cutoff_limit,saturated=False)
 
 	return labels
+
+def find_circ_aper(labels,rad,xc,yc): #use centroid position found from arbitrary aperture
+	# first make a matrix that contains the x and y positions
+	# remember x is second coordinate
+	med_x = median(xc)
+	med_y = median(yc)
+  	x_pixels = [range(0,shape(labels)[1])] * shape(labels)[0]
+  	y_pixels = transpose([range(0,shape(labels)[0])] * shape(labels)[1])
+
+  	inside = ((x_pixels-med_x)**2. + (y_pixels-med_y)**2.)<rad**2. 
+  	labels = 1*inside
+  	return labels 
+
 
 def draw_aper(flux,aper,epic):
 	#input aperture from find_aper
@@ -115,7 +133,7 @@ def draw_aper(flux,aper,epic):
 	plt.plot(seg[:,0],seg[:,1],color='r',zorder=10,lw=2.5)
 	plt.xlim(0,aper.shape[1])
 	plt.ylim(0,aper.shape[0])
-	plt.savefig('outputs/'+str(epic)+'aper.pdf',bbox_inches='tight')
+	plt.savefig('outputs/'+str(epic)+'_aper.pdf',bbox_inches='tight')
 	plt.close('all')
 
 	return seg	
@@ -157,7 +175,7 @@ def get_bg(time,flux,aper,epic,plot=True):
 	sig = nanstd(bg)
 	med = nanmedian(bg)
 	# bg[where(isnan(bg)==1)] = 0
-	flagged = where(abs(bg-med)>3*sig)
+	flagged = where(abs(bg-med)>7*sig)
 	if plot:
 		fig = plt.figure(figsize=(8,3))
 		fig.clf()
@@ -171,10 +189,11 @@ def get_bg(time,flux,aper,epic,plot=True):
 
 
 def get_cen(time,flux,aper,epic):
-	bg, flags = get_bg(time,flux,aper,epic)
-	time = delete(time,flags)
-	flux = delete(flux,flags,axis=0)
-	bg = delete(bg,flags)
+	#find centroid and sum fluxes
+	# bg, flags = get_bg(time,flux,aper,epic)
+	# time = delete(time,flags)
+	# flux = delete(flux,flags,axis=0)
+	# bg = delete(bg,flags)
 
 	xc = []
 	yc = []
@@ -183,7 +202,7 @@ def get_cen(time,flux,aper,epic):
 	aperture_fluxes = flux*aper
   	
   	# sum over axis 2 and 1 (the X and Y positions), (axis 0 is the time)
-  	f_t = nansum(nansum(aperture_fluxes,axis=2), axis=1) - bg
+  	f_t = nansum(nansum(aperture_fluxes,axis=2), axis=1) #- bg
   
  	# first make a matrix that contains the x and y positions
   	x_pixels = [range(0,shape(aperture_fluxes)[2])] * shape(aperture_fluxes)[1]
@@ -205,15 +224,16 @@ def get_cen(time,flux,aper,epic):
 
 
 def plot_lc(time,ftot,xc,yc,epic):
-	plt.close('all')
-	fig = plt.figure(figsize=(8,3))
-	fig.clf()
-	plt.plot(time,ftot,marker='.',lw=0)
-	plt.xlabel('Time')
-	plt.ylabel('Flux (pixel counts)')
-	plt.title('Raw light curve')
-	plt.savefig('outputs/'+str(epic)+'_rawlc.pdf',bbox_inches='tight')
-	plt.close(fig)
+	# plt.close('all')
+	# fig = plt.figure(figsize=(8,3))
+	# fig.clf()
+	# plt.plot(time,ftot,marker='.',lw=0)
+	# plt.ylim(max([min(ftot),0.9]),1.05)
+	# plt.xlabel('Time')
+	# plt.ylabel('Flux (pixel counts)')
+	# plt.title('Raw light curve')
+	# plt.savefig('outputs/'+str(epic)+'_rawlc.pdf',bbox_inches='tight')
+	# plt.close(fig)
 
 	fig = plt.figure()
 	fig.clf()

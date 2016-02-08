@@ -14,7 +14,7 @@ def mad(data):
 	up = where(data>median(data))[0]
 	return median(abs(data[up] - median(data)))
 
-def remove_thrust(time,flux,xc,yc,printtimes=False):
+def remove_thrust(time,flux,ftot,xc,yc,printtimes=False):
 	#find and remove points in middle of thruster events, divide LC into segments
 	diff_centroid = sqrt(diff(xc)**2 + diff(yc)**2)
 	sigma = std(diff_centroid)
@@ -34,42 +34,44 @@ def remove_thrust(time,flux,xc,yc,printtimes=False):
   	yc = yc[thruster_mask]
   	time = time[thruster_mask]
   	flux = flux[thruster_mask]
+  	ftot = ftot[thruster_mask]
 
-  	return time, flux, xc, yc, firetimes
+  	return time, flux, ftot, xc, yc, firetimes
 
-def spline(time,flux,tsegs,squiggles=False):
+def spline(time,flux,tsegs,squiggles=False,plot=False):
 	#fit B-spline to light curve, remove outliers. Set squiggles=True for high stellar variability
 	#takes really long for short cadence
 
 	t_clean = array([])
 	f_clean = array([])
+	raw_clean = array([])
 	segs = []
 
 
 	for i in range(0,len(tsegs)):
-		fig = plt.figure()
-		fig.clear()
+		
 		seg = tsegs[i]
 
 		chunk = where( (time>=seg[0]) & (time<= seg[1]) )[0]
 		
 		tchunk = time[chunk]
 		fchunk = flux[chunk]
+		rawchunk = fchunk
 
+		ind_knots = (linspace(3,len(tchunk)-3,15)).astype('int')
+		knots = tchunk[ind_knots]
+		# print 'knots', knots
 		if squiggles:
-			ind_knots = (linspace(3,len(tchunk)-3,15)).astype('int')
-			knots = tchunk[ind_knots]
-			# print 'knots', knots
-			tck = itp.splrep(tchunk,fchunk,t=knots)	
+			tck = itp.splrep(tchunk,fchunk,t=knots)
 		else:
-			tck = itp.splrep(tchunk,fchunk,s=len(tchunk)) #+sqrt(2*len(tchunk)))
+			tck = itp.splrep(tchunk,fchunk,s=len(tchunk)-3*sqrt(2*len(tchunk))) #+sqrt(2*len(tchunk)))
 		fmod = itp.splev(tchunk,tck)
 
 
 		#remove outliers, fit again
 		j = 0
 		while j<2:
-			sig = mad(fchunk-fmod)
+			sig = robust_std(fchunk-fmod)
 			good = where( abs(fmod-fchunk)<3*sig )[0]
 			if squiggles:
 				ind_knots = (linspace(3,len(tchunk)-3,15)).astype('int')
@@ -79,19 +81,25 @@ def spline(time,flux,tsegs,squiggles=False):
 				except ValueError:
 					tck = itp.splrep(tchunk[good],fchunk[good],s=len(tchunk[good])-3*sqrt(2*len(tchunk[good])))
 			else:
-				tck = itp.splrep(tchunk[good],fchunk[good],s=len(tchunk[good])+sqrt(2*len(tchunk[good])))
+				try:
+					tck = itp.splrep(tchunk[good],fchunk[good],s=len(tchunk[good])+sqrt(2*len(tchunk[good])))
+				except TypeError:
+					tck = itp.splrep(tchunk[good],fchunk[good],s=len(tchunk[good])+2*sqrt(2*len(tchunk[good])))
 			fmod = itp.splev(tchunk,tck)
 			
 			j += 1
 
-			# plt.close('all')
-			# plt.plot(tchunk,fchunk,lw=0,marker='.')
-			# plt.plot(tchunk,fmod)
-			# plt.title('Spline fit '+str(seg[0]))
-			# plt.gca().get_xaxis().get_major_formatter().set_useOffset(False)
-			# plt.xlabel('Time')
-			# plt.ylabel('Flux')
-			# plt.show()
+			if plot:
+				fig = plt.figure()
+				fig.clear()
+				plt.plot(tchunk,fchunk,lw=0,marker='.')
+				plt.plot(tchunk,fmod)
+				plt.title('Spline fit '+str(seg[0]))
+				plt.gca().get_xaxis().get_major_formatter().set_useOffset(False)
+				plt.xlabel('Time')
+				plt.ylabel('Flux')
+				plt.show()
+				plt.close(fig)
 
 		fchunk -= array(fmod)
 		fchunk += 1
@@ -100,9 +108,11 @@ def spline(time,flux,tsegs,squiggles=False):
 		good = where( fchunk<(1+5*sig) )[0]
 		fchunk = fchunk[good]
 		tchunk = tchunk[good]
+		rawchunk = rawchunk[good]
 
 		t_clean = concatenate((t_clean,tchunk))
 		f_clean = concatenate((f_clean,fchunk))
+		raw_clean = concatenate((raw_clean,rawchunk))
 		segs += [i]*len(t_clean)
 
 
@@ -171,9 +181,9 @@ def robust_fit(x,y,poly=True):
 	return yfit
 
 def robust_std(data):
-	sig = std(data)
+	sig = nanstd(data)
 	good = where(abs(data)<3*sig)
-	sig = std(data[good])
+	sig = nanstd(data[good])
 	return sig
 
 def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref,plot=False):
@@ -182,7 +192,6 @@ def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref,plot=False):
 	t_corr = []
 	x_corr = []
 	y_corr = []
-
 
 	#firetimes gives times of thruster fires, so we take chunks that include integer numbers of drift segments
 	for tseg in tsegs:
@@ -197,18 +206,17 @@ def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref,plot=False):
 		xrefseg = []
 		yrefseg = []
 		for t in tchunk:
-			ind = where( abs(tref-t)<0.01 )[0]
-			if ind.size==0:
-				ind = where( abs(tref-t)==min(abs(tref-t)) )[0]
-			xrefseg.append(xref[ind][0])
+			ind = where( abs(tref-t)==min(abs(tref-t)) )[0]
+			if len(where(xrefseg==xref[ind][0]))>0:
+				xrefseg.append(xref[ind][0]+random.normal(0,0.0001))
+			else:
+				xrefseg.append(xref[ind][0])
 			yrefseg.append(yref[ind][0])
 
 		xrefseg = array(xrefseg) 
 		yrefseg = array(yrefseg) 
-		plt.close('all')
-		plt.plot(xrefseg,yrefseg,lw=0,marker='.')
 
-		res = polyfit(xrefseg,yrefseg,1)
+		res = polyfit(xrefseg,yrefseg,2)
 		yfit = polyval(res,xrefseg)
 
 
@@ -217,7 +225,7 @@ def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref,plot=False):
 		h = (res[-2]*yrefseg+xrefseg) / sqrt(1.+res[-2]**2.)
 
 		j = 0
-		fchunk /= median(fchunk)
+		# fchunk /= median(fchunk)
 
 
 		while j<2:
@@ -246,8 +254,10 @@ def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref,plot=False):
 			sig2 = robust_std(fchunk-fit2)
 			if sig1>sig2*1.3: #prevent overfitting. don't use spline unless it's much better
 				fit = fit2
+				sig = sig2
 			else:
 				fit = fit1
+				sig = sig1
 
 			if plot:
 				plt.close('all')
@@ -261,8 +271,12 @@ def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref,plot=False):
 
 			j += 1
 
-		
-		# fchunk += 1
+
+		good = where(fchunk<1+3*sig)
+		fchunk = fchunk[good]
+		tchunk = tchunk[good]
+		xchunk = xchunk[good]
+		ychunk = ychunk[good]
 
 		t_corr += list(tchunk)
 		f_corr += list(fchunk)
@@ -271,6 +285,16 @@ def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref,plot=False):
 
 
 	return array(t_corr),array(f_corr), array(x_corr), array(y_corr)
+
+def rem_min(t,f,segs):
+	j = 0
+	while j<2:
+		keep = where(f!=min(f))[0]
+		f = f[keep]
+		t = t[keep]
+		segs = array(segs)[keep]
+		j += 1
+	return t, f, segs
 
 def plotwrite(epic,kepmag,ra,dec,squiggle_note,t,f_corr,segs):
 	plt.close('all')
@@ -289,7 +313,7 @@ def plotwrite(epic,kepmag,ra,dec,squiggle_note,t,f_corr,segs):
 	for i in range(0,len(t)):
 		print>>file, t[i], f_corr[i], segs[i]
 	file.close()
-
+	plt.close(fig)
 
 def pdf(epic):
 	os.chdir('outputs/')

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from numpy import linspace, array
 from clean_lc import remove_thrust
 
-epic = 211303922
+epic = 211302061
 write = True
 t,f,k,x,y = read_pixel(epic,5,'l')
 labels = find_aper(t,f)
@@ -12,7 +12,7 @@ seg = draw_aper(f,labels,epic)
 t,f = remove_nan(t,f)
 t,ftot,xc,yc = get_cen(t,f,labels,epic)
 print len(t)
-t,ftot,xc,yc,firetimes = remove_thrust(t,ftot,xc,yc,printtimes=True)
+t,f,ftot,xc,yc,firetimes = remove_thrust(t,f,ftot,xc,yc,printtimes=True)
 print len(t)
 
 fig, ax = plt.subplots(2,2)
