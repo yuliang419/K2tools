@@ -1,13 +1,13 @@
 #! /bin/bash
 
-for ((xx=22; xx<=28; xx++))
+for xx in {22..28}
 do
-	for ((yy=10; yy=99; yy++))
+	for yy in {10..99}
 	do
 		wget -r -l1 -H -nd -A.gz -erobots=off https://archive.stsci.edu/pub/k2/target_pixel_files/c6/21$xx\00000/$yy\000/
 	done
 
-	for ((y=0; y=9; yy++))
+	for y in {0..9}
 	do
 		wget -r -l1 -H -nd -A.gz -erobots=off https://archive.stsci.edu/pub/k2/target_pixel_files/c6/21$xx\00000/0$y\000/
 	done
