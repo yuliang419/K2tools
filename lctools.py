@@ -40,7 +40,7 @@ def readlc(epic,p,t0):
 	ax[0].plot(t,f,lw=0,marker='.')
 	ax[0].set_xlabel('HJD-2454900')
 	ax[0].set_ylabel('Relative flux')
-	ax[0].set_ylim(min(f),1.005)
+	ax[0].set_ylim(min(f),max(f))
 	ax[0].get_yaxis().get_major_formatter().set_useOffset(False)
 
 	#sort by phase
@@ -63,9 +63,9 @@ def readlc(epic,p,t0):
 	ax[1].set_xlabel('Phase')
 	ax[1].set_ylabel('Relative flux')
 	ax[1].set_xlim(-0.5,0.5)
-	ax[1].set_ylim(min(f),1.005)
+	ax[1].set_ylim(min(f),max(f))
 
-	res = f_sorted - fmod
+	res = f_sorted - 1
 	sigma = std(res)
 
 	# res, [f_sorted, t_sorted, phase] = sigma_clip(7,res,f_sorted,t_sorted,phase)
@@ -104,7 +104,7 @@ def getlctrans(epic,t,f,p,t0,window,w0,depth,badlist,plotbad=True,plots=True):
 		midt = i*p + t0
 		
 		dt = t - midt
-		oot = where( (abs(dt)>window) & (abs(dt)<window+0.1*p) )[0]
+		oot = where( (abs(dt)>window) & (abs(dt)<window+0.2*p) )[0]
 		if len(oot)<=1:
 			continue
 
@@ -116,7 +116,7 @@ def getlctrans(epic,t,f,p,t0,window,w0,depth,badlist,plotbad=True,plots=True):
 		error = std(fn[oot]-fit[oot])
 		select = where( abs(dt)<(window+0.1*p) )[0]
 
-		good = where( (fn>1+depth-5*error) & (fn<1+3*error) & (abs(dt)<=p/2) )[0]
+		good = where( (fn>1+depth-10*error) & (fn<1+3*error) & (abs(dt)<=p/2) )[0]
 		if plots:
 			if cnt%8 == 0:
 				plt.close('all')
@@ -347,34 +347,23 @@ def merge(epic):
 	os.chdir('outputs/')
 	output = PdfFileWriter()
 	page0 = output.addBlankPage(width=420,height=297)
+	
+	obj = PdfFileReader(file(epic+'_params.pdf','rb'))
+	page1 = obj.getPage(0)
+	page0.mergeScaledTranslatedPage(page1,scale=0.25,tx=20,ty=150)
 
-	# obj = PdfFileReader(file(epic+'_chart.pdf','rb'))
-	# page1 = obj.getPage(0)
-	# page0.mergeScaledTranslatedPage(page1,scale=0.8,tx=150,ty=-60)
+	obj = PdfFileReader(file(epic+'_aper.pdf','rb'))
+	page1 = obj.getPage(0)
+	page0.mergeScaledTranslatedPage(page1,scale=0.2,tx=15,ty=90)
 
-	# obj = PdfFileReader(file(epic+'_params.pdf','rb'))
-	# page1 = obj.getPage(0)
-	# page0.mergeScaledTranslatedPage(page1,scale=0.18,tx=0,ty=180)
+	obj = PdfFileReader(file(epic+'_cleanlc.pdf','rb'))
+	page1 = obj.getPage(0)
+	page0.mergeScaledTranslatedPage(page1,scale=0.32,tx=130,ty=105)
 
-	# obj = PdfFileReader(file(epic+'aper.pdf','rb'))
-	# page1 = obj.getPage(0)
-	# page0.mergeScaledTranslatedPage(page1,scale=0.17,tx=70,ty=210)
+	obj = PdfFileReader(file(epic+'_rawlc.pdf','rb'))
+	page1 = obj.getPage(0)
+	page0.mergeScaledTranslatedPage(page1,scale=0.32,tx=275,ty=105)
 
-	# obj = PdfFileReader(file(epic+'_cleanlc_squiggles.pdf','rb'))
-	# page1 = obj.getPage(0)
-	# page0.mergeScaledTranslatedPage(page1,scale=0.25,tx=10,ty=140)
-
-	# obj = PdfFileReader(file(epic+'_rawlc.pdf','rb'))
-	# page1 = obj.getPage(0)
-	# page0.mergeScaledTranslatedPage(page1,scale=0.25,tx=155,ty=225)
-
-	# obj = PdfFileReader(file(epic+'_bg.pdf','rb'))
-	# page1 = obj.getPage(0)
-	# page0.mergeScaledTranslatedPage(page1,scale=0.25,tx=290,ty=225)
-
-	# obj = PdfFileReader(file(epic+'_cleanlc.pdf','rb'))
-	# page1 = obj.getPage(0)
-	# page0.mergeScaledTranslatedPage(page1,scale=0.25,tx=10,ty=75)
 
 	urllib.urlretrieve('https://cfop.ipac.caltech.edu/k2/files/'+epic+'/Finding_Chart/'+epic+'F-mc20150630.png',epic+'_chart.png')
 	img = mpimg.imread(epic+'_chart.png')
@@ -390,7 +379,7 @@ def merge(epic):
 
 	obj = PdfFileReader(file(epic+'_sed.pdf','rb'))
 	page1 = obj.getPage(0)
-	page.mergeScaledTranslatedPage(page1,scale=0.3,tx=170,ty=30)
+	page.mergeScaledTranslatedPage(page1,scale=0.3,tx=170,ty=20)
 
 	obj = PdfFileReader(file(epic+'_1firstcut.pdf','rb'))
 	page1 = obj.getPage(0)
@@ -422,18 +411,12 @@ def merge(epic):
 	 	page2.mergeScaledTranslatedPage(page1,scale=0.35,tx=(i%3)*140,ty=20)
 	 	i += 1
 
-	# page3 = output.addBlankPage(width=420,height=297)
-	# obj = PdfFileReader(file(epic+'_fit.pdf','rb'))
-	# page1 = obj.getPage(0)
-	# page3.mergeScaledTranslatedPage(page1,scale=0.35,tx=160,ty=120)
-	# obj = PdfFileReader(file(epic+'_sed.pdf','rb'))
-	# page1 = obj.getPage(0)
-	# page3.mergeScaledTranslatedPage(page1,scale=0.3,tx=0,ty=155)
 
-	trash = glob.glob(epic+'*.pdf')
-	for f in trash:
-		os.remove(f)
-	os.remove(epic+'_chart.png')
+	# trash = glob.glob(epic+'*.pdf')
+	# for f in trash:
+	# 	os.remove(f)
+	# os.remove(epic+'_chart.png')
+	# os.remove(epic+'_sed.vot')
 		
 	outstream = file(epic+'summary.pdf','wb')
 	output.write(outstream)

@@ -5,6 +5,7 @@ import model_transits
 from mcmc_priors import Prior_func, Flat_Prior_dis, Gauss_Prior_dis
 import corner
 from math import ceil
+from lmfit import minimize, Parameters, report_errors
 
 def logp(x, priors_info):
 	return Prior_func(priors_info, x)
@@ -58,15 +59,44 @@ def transit_likelihoodfunc(params,period,times,dt_new,n_ev,data,sigma,priors_inf
 	#print log_likelihood
 	return sum(array(prior)) + sum(array(log_likelihood))
 
-def run_mcmc(epic,transit_params,period,times,data,sigma,nwalkers=100,nthread=1,burnintime=300,iterations=500,saveacc=500,saveval=500,thin=100):
+
+def residual(params,t,data,period):
+	#residual function for fitting for midtransit times
+	vals = params.valuesdict()
+	t0 = vals['t0']
+	b = vals['b']
+	r_a = vals['r_a']
+	Rp_Rs = vals['Rp_Rs']
+	F = vals['F']
+	gamma1 = vals['gamma1']
+	gamma2 = vals['gamma2']
+	model = model_transits.modeltransit([t0,b,r_a,Rp_Rs,F,gamma1,gamma2],model_transits.occultquad,period,t)
+	return (data-model)
+
+def getparams(times,data,depth,period):
+	params = Parameters() # fitting parameters, set to vary=false to fix
+  	params.add('t0', value = 0.,vary=True,min=-0.05,max=0.05)
+  	params.add('b', value = 0.7,vary=True,min=-1,max=1)
+  	params.add('r_a', value = 0.2,vary=True,min=0,max=0.5)
+  	params.add('Rp_Rs', value = depth**0.5,vary=True,min=0,max=0.5)
+  	params.add('F', value = 1,vary=True)
+  	params.add('gamma1', value = 0.3,vary=True,min=0.1,max=0.5)
+  	params.add('gamma2', value = 0.3,vary=True,min=0.1,max=0.5)
+
+  	fit = minimize(residual, params, args=(times,data,period))
+  	vals = fit.params.valuesdict()
+  	return [vals['t0'],vals['b'],vals['r_a'],vals['Rp_Rs'],vals['F'],vals['gamma1'],vals['gamma2']]
+
+
+def run_mcmc(epic,transit_params,period,times,data,sigma,nwalkers=50,nthread=1,burnintime=100,iterations=400,saveacc=200,saveval=200,thin=100):
 	# Parameters are [T0,b,R_over_a,Rp_over_Rstar,flux_star,gamma1,gamma2]
-	T0_prior = ['gauss', 0, 0.05] # should be around 0.
-	b_prior = ['flat', -1., 1.]
-	R_over_a_prior = ['gauss', 0.5, 0.2]
-	Rp_over_Rstar_prior = ['flat',1e-4, 0.5]
-	flux_star_prior = ['gauss', 1, 0.0002] # should be normalised to one #FIXME
-	gamma1_prior = ['flat',0.1,0.6]
-	gamma2_prior = ['flat',0.1,0.6]
+	T0_prior = ['gauss', 0, 0.1] # should be around 0.
+	b_prior = ['flat', -1, 1]
+	R_over_a_prior = ['flat', 0.01, 0.4]
+	Rp_over_Rstar_prior = ['flat',0.0001, 0.3]
+	flux_star_prior = ['flat', 0.999, 1.001] # should be normalised to one #FIXME
+	gamma1_prior = ['flat',0.1,0.5]
+	gamma2_prior = ['flat',0.1,0.5]
 
 	priors_info = [T0_prior, b_prior, R_over_a_prior, Rp_over_Rstar_prior, flux_star_prior, gamma1_prior, gamma2_prior] 
 	ndim = 7

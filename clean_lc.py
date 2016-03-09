@@ -44,7 +44,6 @@ def spline(time,flux,tsegs,squiggles=False,plot=False):
 
 	t_clean = array([])
 	f_clean = array([])
-	raw_clean = array([])
 	segs = []
 
 
@@ -56,7 +55,6 @@ def spline(time,flux,tsegs,squiggles=False,plot=False):
 		
 		tchunk = time[chunk]
 		fchunk = flux[chunk]
-		rawchunk = fchunk
 
 		ind_knots = (linspace(3,len(tchunk)-3,15)).astype('int')
 		knots = tchunk[ind_knots]
@@ -104,15 +102,9 @@ def spline(time,flux,tsegs,squiggles=False,plot=False):
 		fchunk -= array(fmod)
 		fchunk += 1
 
-		sig = std(fchunk-1)
-		good = where( fchunk<(1+5*sig) )[0]
-		fchunk = fchunk[good]
-		tchunk = tchunk[good]
-		rawchunk = rawchunk[good]
 
 		t_clean = concatenate((t_clean,tchunk))
 		f_clean = concatenate((f_clean,fchunk))
-		raw_clean = concatenate((raw_clean,rawchunk))
 		segs += [i]*len(t_clean)
 
 
@@ -180,18 +172,22 @@ def robust_fit(x,y,poly=True):
 
 	return yfit
 
-def robust_std(data):
+def robust_std(data,transits=False):
 	sig = nanstd(data)
-	good = where(abs(data)<3*sig)
+	if transits:
+		good = where(data>-3*sig)
+	else:
+		good = where(abs(data)<3*sig)
 	sig = nanstd(data[good])
 	return sig
 
-def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref,plot=False):
+def fit_lc(time,flux,raw,xc,yc,tsegs,tref,xref,yref,plot=False):
 
 	f_corr = []
 	t_corr = []
 	x_corr = []
 	y_corr = []
+	raw_corr = []
 
 	#firetimes gives times of thruster fires, so we take chunks that include integer numbers of drift segments
 	for tseg in tsegs:
@@ -200,6 +196,7 @@ def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref,plot=False):
 
 		tchunk = time[chunk]
 		fchunk = flux[chunk]
+		rawchunk = raw[chunk]
 		xchunk = xc[chunk]
 		ychunk = yc[chunk]
 		
@@ -246,13 +243,15 @@ def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref,plot=False):
 				plt.show()
 
 			fchunk -= fit
+			rawchunk -= fit
 			fchunk += 1
+			rawchunk += 1
 
 			fit1 = robust_fit(tchunk,fchunk)
 			fit2 = robust_fit(tchunk,fchunk,poly=False)
 			sig1 = robust_std(fchunk-fit1)
 			sig2 = robust_std(fchunk-fit2)
-			if sig1>sig2*1.3: #prevent overfitting. don't use spline unless it's much better
+			if sig1>sig2*1.2: #prevent overfitting. don't use spline unless it's much better
 				fit = fit2
 				sig = sig2
 			else:
@@ -277,26 +276,29 @@ def fit_lc(time,flux,xc,yc,tsegs,tref,xref,yref,plot=False):
 		tchunk = tchunk[good]
 		xchunk = xchunk[good]
 		ychunk = ychunk[good]
+		rawchunk = rawchunk[good]
 
 		t_corr += list(tchunk)
 		f_corr += list(fchunk)
 		x_corr += list(xchunk)
 		y_corr += list(ychunk)
+		raw_corr += list(rawchunk)
 
 
-	return array(t_corr),array(f_corr), array(x_corr), array(y_corr)
+	return array(t_corr),array(f_corr), array(x_corr), array(y_corr), array(raw_corr)
 
-def rem_min(t,f,segs):
+def rem_min(t,f,segs,raw):
 	j = 0
 	while j<2:
 		keep = where(f!=min(f))[0]
 		f = f[keep]
 		t = t[keep]
 		segs = array(segs)[keep]
+		raw = raw[keep]
 		j += 1
-	return t, f, segs
+	return t, f, segs, raw
 
-def plotwrite(epic,kepmag,ra,dec,squiggle_note,t,f_corr,segs):
+def plotwrite(epic,kepmag,ra,dec,squiggle_note,t,f_corr,segs,raw):
 	plt.close('all')
 	fig = plt.figure(figsize=[8,8])
 	plt.plot([0,1],[0,1],lw=0)
@@ -310,9 +312,12 @@ def plotwrite(epic,kepmag,ra,dec,squiggle_note,t,f_corr,segs):
 
 	t -= 67
 	file = open('DecorrelatedPhotometry/LCfluxesepic'+str(epic)+'star00.txt','w')
+	file2 = open('rawlc/rawlc_'+str(epic)+'.txt','w')
 	for i in range(0,len(t)):
 		print>>file, t[i], f_corr[i], segs[i]
+		print>>file2, t[i], raw[i]
 	file.close()
+	file2.close()
 	plt.close(fig)
 
 def pdf(epic):
@@ -335,7 +340,7 @@ def pdf(epic):
 	page1 = obj.getPage(0)
 	page.mergeScaledTranslatedPage(page1,scale=0.18,tx=0,ty=180)
 
-	obj = PdfFileReader(file(epic+'aper.pdf','rb'))
+	obj = PdfFileReader(file(epic+'_aper.pdf','rb'))
 	page1 = obj.getPage(0)
 	page.mergeScaledTranslatedPage(page1,scale=0.17,tx=70,ty=210)
 

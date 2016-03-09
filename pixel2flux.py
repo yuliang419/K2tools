@@ -56,17 +56,20 @@ def find_aper(time,flux,cutoff_limit=3,saturated=False):
 	if saturated:
 		min_dist = aper.shape[1]/2
 	else:
-		min_dist = max([1,size**0.5/2.7])
+		min_dist = max([1,size**0.5/2.9])
 
-	# min_dist=1
+	threshold_rel = 0.0002
+	if cutoff_limit <2.5:
+		threshold_rel /= 10 
 
-	local_max = plm(fsum,indices=False,min_distance=min_dist,exclude_border=False,threshold_rel=0.0005) #threshold_rel determined by trial & error
-	coords = plm(fsum,indices=True,min_distance=min_dist,exclude_border=False,threshold_rel=0.0005)
+	local_max = plm(fsum,indices=False,min_distance=min_dist,exclude_border=False,threshold_rel=threshold_rel) #threshold_rel determined by trial & error
+	coords = plm(fsum,indices=True,min_distance=min_dist,exclude_border=False,threshold_rel=threshold_rel)
 
 	dist = 100
 	markers = ndi.label(local_max)[0]
 	labels = watershed(-fsum,markers,mask=aper[0])
 
+  
 	for coord in coords:
 		newdist = ((coord[0]-aper.shape[1]/2.)**2+(coord[1]-aper.shape[2]/2.)**2)**0.5
 		if (newdist<dist) and (markers[coord[0],coord[1]] in unique(labels)):
@@ -135,8 +138,6 @@ def draw_aper(flux,aper,epic):
 	plt.ylim(0,aper.shape[0])
 	plt.savefig('outputs/'+str(epic)+'_aper.pdf',bbox_inches='tight')
 	plt.close('all')
-
-	return seg	
 
 def remove_nan(time,flux):
 #remove all empty frames
