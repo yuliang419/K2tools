@@ -401,7 +401,11 @@ def merge(epic):
 	page1 = obj.getPage(0)
 	page.mergeScaledTranslatedPage(page1,scale=0.2,tx=0,ty=80)
 
-	
+	page3 = output.addBlankPage(width=420,height=297)
+	obj = PdfFileReader(file(epic+'_chart.pdf','rb'))
+	page1 = obj.getPage(0)
+	page3.mergeScaledTranslatedPage(page1,scale=0.4,tx=20,ty=80)
+
 	i = 0
 	for filen in glob.glob(epic+'*alltrans*.pdf'):
 		if i%3==0:
@@ -412,11 +416,11 @@ def merge(epic):
 	 	i += 1
 
 
-	# trash = glob.glob(epic+'*.pdf')
-	# for f in trash:
-	# 	os.remove(f)
-	# os.remove(epic+'_chart.png')
-	# os.remove(epic+'_sed.vot')
+	trash = glob.glob(epic+'*.pdf')
+	for f in trash:
+		os.remove(f)
+	os.remove(epic+'_chart.png')
+	os.remove(epic+'_sed.vot')
 		
 	outstream = file(epic+'summary.pdf','wb')
 	output.write(outstream)
