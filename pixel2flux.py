@@ -130,10 +130,11 @@ def draw_aper(flux,aper,epic):
 	y0 = -0.5
 	y1 = aper.shape[0]+y0
 
-	seg[:,0] = x0 + (x1-x0)*seg[:,0]/aper.shape[1]
-	seg[:,1] = y0 + (y1-y0)*seg[:,1]/aper.shape[0]
-
-	plt.plot(seg[:,0],seg[:,1],color='r',zorder=10,lw=2.5)
+	if len(seg)!=0:
+		seg[:,0] = x0 + (x1-x0)*seg[:,0]/aper.shape[1]
+		seg[:,1] = y0 + (y1-y0)*seg[:,1]/aper.shape[0]
+		plt.plot(seg[:,0],seg[:,1],color='r',zorder=10,lw=2.5)
+		
 	plt.xlim(0,aper.shape[1])
 	plt.ylim(0,aper.shape[0])
 	plt.savefig('outputs/'+str(epic)+'_aper.pdf',bbox_inches='tight')
