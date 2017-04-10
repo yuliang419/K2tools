@@ -1,256 +1,295 @@
 import matplotlib.pyplot as plt
-from numpy import *
+import numpy as np
 from scipy import ndimage as ndi
 import pyfits
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max as plm
-from math import floor
 from matplotlib.colors import LogNorm
 
 
-def read_pixel(epic,field,cad):
+class BadApertureError(Exception):
+    def __init__(self, value):
+        self.value = value
 
-	#cad = 'l' or 's'
-	filename = 'pixel_files/ktwo'+str(epic)+'-c0'+str(field)+'_'+cad+'pd-targ.fits'
-	#flux may contain nans
-
-	hdulist = pyfits.open(filename)
-	data = hdulist[1].data
-	time = data['TIME']
-	flux = data['FLUX']
-	good = where(isnan(time)==0)
-	time = time[good]
-	flux = flux[good]
-	header = hdulist[0].header
-
-	kepmag = header['Kepmag']
-	RA = header['RA_OBJ']
-	DEC = header['DEC_OBJ']
-	epic = header['KEPLERID']
-	x = hdulist[2].header['CRVAL2P'] #x position of pixel
-	y = hdulist[2].header['CRVAL1P'] #y position of pixel
-	ra = hdulist[0].header['RA_OBJ']
-	dec = hdulist[0].header['DEC_OBJ']
-
-	if kepmag <= 10:
-		print 'WARNING: saturated target'
-
-	return time, flux, kepmag, ra, dec
+    def __str__(self):
+        return repr(self.value)
 
 
-def find_aper(time,flux,cutoff_limit=3,saturated=False):
-	fsum = nansum(flux,axis=0) #sum over all images
-	fsum -= min(fsum.ravel())
-	cutoff = cutoff_limit*median(fsum)
-	aper = array([fsum > cutoff])
-	aper = 1*aper #arrays of 0s and 1s
-	while sum(aper)<=1:
-		print 'bad aper'
-		cutoff_limit -= 0.2
-		print cutoff_limit
-		cutoff = cutoff_limit*median(fsum)
-		aper = array([fsum > cutoff])
-		aper = 1*aper #arrays of 0s and 1s
-	size = sum(aper) #total no. of pixels in aperture
+class PixelTarget:
+    def __init__(self, epic, field, cad):
+        """
 
-	if saturated:
-		min_dist = aper.shape[1]/2
-	else:
-		min_dist = max([1,size**0.5/2.9])
+        :param epic: str, EPIC of target
+        :param field: str, field number
+        :param cad: 'l' (long) or 's' (short)
+        :return:
+        """
+        self.data = {'jd': [], 'rlc': [], 'x': [], 'y': [], 'cadence': cad, 'ra': [], 'dec': [], 'kmag': []}
+        self.epic = epic
+        self.field = field
+        self.cad = cad
+        self.saturated = False
+        self.pixeldat = []
+        self.cutoff_limit = 3
+        self.start_aper = 5
 
-	threshold_rel = 0.0002
-	if cutoff_limit <2.5:
-		threshold_rel /= 10 
+    def read_fits(self, indir='pixel_files/'):
+        """
+        Read pixel-level image.
+        :param indir: directory where fits file is saved. Download fits files with wget before starting.
+        :return:
+        """
+        filename = indir + 'ktwo' + str(self.epic) + '-c' + str(self.field) + '_' + self.cad + 'pd-targ.fits'
+        # flux may contain nans
 
-	local_max = plm(fsum,indices=False,min_distance=min_dist,exclude_border=False,threshold_rel=threshold_rel) #threshold_rel determined by trial & error
-	coords = plm(fsum,indices=True,min_distance=min_dist,exclude_border=False,threshold_rel=threshold_rel)
+        try:
+            hdulist = pyfits.open(filename)
+        except IOError:
+            print 'fits file does not exist. Download all files from MAST before starting.'
+            raise
+        data = hdulist[1].data
+        time = data['TIME']
+        flux = data['FLUX']
+        good = np.where(~np.isnan(time))  # only keep image frames with valid time
+        time = time[good]
+        flux = flux[good]
+        header = hdulist[0].header
 
-	dist = 100
-	markers = ndi.label(local_max)[0]
-	labels = watershed(-fsum,markers,mask=aper[0])
+        kepmag = header['Kepmag']
+        # mostly derived from trial and error... may need to be modified for especially bright or faint stars
+        if kepmag >= 18:
+            self.cutoff_limit = 1.5
+            self.start_aper = 2
+        elif kepmag < 13:
+            self.cutoff_limit = 5
+            self.start_aper = 4
+        else:
+            self.cutoff_limit = 5 - (3.5 / 5) * (kepmag - 13)
+            self.start_aper = 3
 
-  
-	for coord in coords:
-		newdist = ((coord[0]-aper.shape[1]/2.)**2+(coord[1]-aper.shape[2]/2.)**2)**0.5
-		if (newdist<dist) and (markers[coord[0],coord[1]] in unique(labels)):
-			centnum = markers[coord[0],coord[1]]
-			dist = newdist
+        RA = header['RA_OBJ']
+        DEC = header['DEC_OBJ']
+        # x = hdulist[2].header['CRVAL2P']  # x position of pixel
+        # y = hdulist[2].header['CRVAL1P']  # y position of pixel
 
-	#in case there are more than one maxima
-	if len(unique(labels))>2:
-		labels = 1*(labels==centnum)
+        if kepmag <= 10:
+            print 'WARNING: saturated target'
+            self.saturated = True
+            self.start_aper = 8
 
-	labels /= labels.max()
-	while sum(labels)<=1:
-		cutoff_limit -= 0.2
-		labels = find_aper(time,flux,cutoff_limit=cutoff_limit,saturated=False)
+        self.data['jd'] = np.array(time)
+        self.pixeldat = np.array(flux)
+        self.data['ra'] = RA
+        self.data['dec'] = DEC
+        self.data['kmag'] = kepmag
 
-	return labels
+        self.remove_nan()
 
-def find_circ_aper(labels,rad,xc,yc): #use centroid position found from arbitrary aperture
-	# first make a matrix that contains the x and y positions
-	# remember x is second coordinate
-	med_x = median(xc)
-	med_y = median(yc)
-  	x_pixels = [range(0,shape(labels)[1])] * shape(labels)[0]
-  	y_pixels = transpose([range(0,shape(labels)[0])] * shape(labels)[1])
+    def find_aper(self, cutoff_limit=None, saturated=True):
+        """
+        Get custom shaped aperture.
+        :param cutoff_limit: select all pixels brighter than cutoff_limit*median. Somehow this works better than
+        sigma clipping.
+        :param saturated: True if target is saturated.
+        :return:
+        """
+        if cutoff_limit is None:
+            cutoff_limit = self.cutoff_limit
 
-  	inside = ((x_pixels-med_x)**2. + (y_pixels-med_y)**2.)<rad**2. 
-  	labels = 1*inside
-  	return labels 
+        fsum = np.nansum(self.pixeldat, axis=0)  # sum over all images
+        fsum -= min(fsum.ravel())
+        cutoff = cutoff_limit * np.median(fsum)
+        aper = np.array([fsum > cutoff])
+        aper = 1 * aper  # convert to arrays of 0s and 1s (1s inside aper)
+
+        while np.sum(aper) <= 1:
+            print 'bad aper'
+            # cutoff_limit too high so that 1 or 0 pixels are selected
+            cutoff_limit -= 0.2
+            print 'New cutoff_limit:', cutoff_limit
+            cutoff = cutoff_limit * np.median(fsum)
+            aper = np.array([fsum > cutoff])
+            aper = 1 * aper  # arrays of 0s and 1s
+        size = np.sum(aper)  # total no. of pixels in aperture
+
+        if (saturated is True) and (self.saturated is True):
+            min_dist = aper.shape[1] / 2  # minimum distance between two maxima
+        else:
+            min_dist = max([1, size ** 0.5 / 2.9])
+
+        threshold_rel = 0.0002
+        if cutoff_limit < 2.5:
+            threshold_rel /= 10  # dealing with faint sources
+
+        # detect local maxima in 2D image
+        local_max = plm(fsum, indices=False, min_distance=min_dist, exclude_border=False,
+                        threshold_rel=threshold_rel)  # threshold_rel determined by trial & error
+        coords = plm(fsum, indices=True, min_distance=min_dist, exclude_border=False, threshold_rel=threshold_rel)
+
+        dist = 100
+        markers = ndi.label(local_max)[0]
+        # in case of blended targets, use watershed to determine where to draw boundary
+        labels = watershed(-fsum, markers, mask=aper[0])
+
+        for coord in coords:
+            newdist = ((coord[0] - aper.shape[1] / 2.) ** 2 + (coord[1] - aper.shape[2] / 2.) ** 2) ** 0.5
+            if (newdist < dist) and (markers[coord[0], coord[1]] in np.unique(labels)):
+                centnum = markers[coord[0], coord[1]]
+                dist = newdist
+
+        # in case there are more than one maxima
+        if len(np.unique(labels)) > 2:
+            labels = 1 * (labels == centnum)
+
+        labels /= labels.max()
+        while np.sum(labels) <= 1:
+            print 'Flux centroid detection failed. Retrying with smaller cutoff_limit.'
+            cutoff_limit -= 0.2
+            labels = self.find_aper(cutoff_limit=cutoff_limit, saturated=False)
+
+        if type(labels) == int:
+            raise BadApertureError('Failed aperture. Giving up on target.')
+
+        return labels
+
+    def remove_nan(self):
+        """
+        Remove all empty frames (why do these exist?)
+        :return:
+        """
+        bad = []
+        for i in range(0, len(self.data['jd'])):
+            f = np.array(self.pixeldat[i])
+            if np.isnan(f).all():
+                bad.append(i)
+
+        self.data['jd'] = np.delete(self.data['jd'], bad)
+        self.pixeldat = np.delete(self.pixeldat, bad, axis=0)
+
+    def aper_phot(self, aper):
+        """
+        Get flux and centroids for given aperture.
+        :param aper: Aperture mask from find_aper or find_circ_aper.
+        :return:
+        """
+
+        aperture_fluxes = self.pixeldat * aper  # retain only pixels inside aper
+
+        # sum over axis 2 and 1 (the X and Y positions), (axis 0 is the time)
+        f_t = np.nansum(np.nansum(aperture_fluxes, axis=2), axis=1)  # subtract bg from this if needed
+
+        # first make a matrix that contains the x and y positions
+        x_pixels = [range(0, np.shape(aperture_fluxes)[2])] * np.shape(aperture_fluxes)[1]
+        y_pixels = np.transpose([range(0, np.shape(aperture_fluxes)[1])] * np.shape(aperture_fluxes)[2])
+
+        # multiply the position matrix with the aperture fluxes to obtain x_i*f_i and y_i*f_i
+        xpos_times_flux = np.nansum(np.nansum(x_pixels * aperture_fluxes, axis=2), axis=1)
+        ypos_times_flux = np.nansum(np.nansum(y_pixels * aperture_fluxes, axis=2), axis=1)
+
+        # calculate centroids
+        xc = xpos_times_flux / f_t
+        yc = ypos_times_flux / f_t
+
+        ftot = f_t
+        ftot = np.array(ftot)
+        ftot /= np.median(ftot)
+
+        self.data['x'] = xc
+        self.data['y'] = yc
+        self.data['rlc'] = ftot
+        return ftot
+
+    def find_circ_aper(self, rad):
+        """
+        Get circular aperture.
+        :param rad: radius of circular aperture
+        :return:
+        """
+        # use centroid position found from custom aperture
+        # first make a matrix that contains the x and y positions
+        # remember x is second coordinate
+        if len(self.data['x']) == 0:
+            print 'Error: centroid coordinates not found. Run aper_phot first to find centroid.'
+            return
+        med_x = np.median(self.data['x'])
+        med_y = np.median(self.data['y'])
+        frame = self.pixeldat[0]
+        x_pixels = [range(0, np.shape(frame)[1])] * np.shape(frame)[0]
+        y_pixels = np.transpose([range(0, np.shape(frame)[0])] * np.shape(frame)[1])
+
+        inside = ((x_pixels - med_x) ** 2. + (y_pixels - med_y) ** 2.) < rad ** 2.
+        labels = 1 * inside
+        return labels
 
 
-def draw_aper(flux,aper,epic):
-	#input aperture from find_aper
-	fsum = nansum(flux,axis=0)
-	fsum -= min(fsum.ravel())
-	plt.close('all')
-	fig = plt.figure(figsize=(8,8))
-	plt.imshow(fsum,norm=LogNorm(),interpolation='none')
-	plt.set_cmap('gray')
+def draw_aper(pixeltarg, aper, ax):
+    """
+    Plot aperture on pixel level image.
+    :param pixeltarg: PixelTarget object
+    :param aper: aperture array
+    :param ax: plot handle
+    :return:
+    """
+    flux = pixeltarg.pixeldat
+    fsum = np.nansum(flux, axis=0)
+    fsum -= min(fsum.ravel())
 
-	#find edge pixels in each row
-	ver_seg = where(aper[:,1:] != aper[:,:-1])
-	hor_seg = where(aper[1:,:] != aper[:-1,:])
+    plt.imshow(fsum, norm=LogNorm(), interpolation='none')
+    plt.set_cmap('gray')
 
-	l = []
-	for p in zip(*hor_seg):
-		l.append((p[1],p[0]+1))
-		l.append((p[1]+1,p[0]+1))
-		l.append((nan,nan))
+    # find edge pixels in each row
+    ver_seg = np.where(aper[:, 1:] != aper[:, :-1])
+    hor_seg = np.where(aper[1:, :] != aper[:-1, :])
 
-	for p in zip(*ver_seg):
-		l.append((p[1]+1,p[0]))
-		l.append((p[1]+1,p[0]+1))
-		l.append((nan,nan))
-	
-	seg = array(l)
-	x0 = -0.5
-	x1 = aper.shape[1]+x0
-	y0 = -0.5
-	y1 = aper.shape[0]+y0
+    l = []
+    for p in zip(*hor_seg):
+        l.append((p[1], p[0] + 1))
+        l.append((p[1] + 1, p[0] + 1))
+        l.append((np.nan, np.nan))
 
-	if len(seg)!=0:
-		seg[:,0] = x0 + (x1-x0)*seg[:,0]/aper.shape[1]
-		seg[:,1] = y0 + (y1-y0)*seg[:,1]/aper.shape[0]
-		plt.plot(seg[:,0],seg[:,1],color='r',zorder=10,lw=2.5)
-		
-	plt.xlim(0,aper.shape[1])
-	plt.ylim(0,aper.shape[0])
-	plt.savefig('outputs/'+str(epic)+'_aper.pdf',bbox_inches='tight')
-	plt.close('all')
+    for p in zip(*ver_seg):
+        l.append((p[1] + 1, p[0]))
+        l.append((p[1] + 1, p[0] + 1))
+        l.append((np.nan, np.nan))
 
-def remove_nan(time,flux):
-#remove all empty frames
-	bad = []
-	for i in range(0,len(time)):
-		f = array(flux[i])
-		sig = nanstd(f)
-		if isnan(sig)==1:
-			bad.append(i)
+    seg = np.array(l)
+    x0 = -0.5
+    x1 = aper.shape[1] + x0
+    y0 = -0.5
+    y1 = aper.shape[0] + y0
 
-	time = delete(time,bad)
-	flux = delete(flux,bad,axis=0)
-	return time, flux
+    if len(seg) != 0:
+        seg[:, 0] = x0 + (x1 - x0) * seg[:, 0] / aper.shape[1]
+        seg[:, 1] = y0 + (y1 - y0) * seg[:, 1] / aper.shape[0]
+        ax.plot(seg[:, 0], seg[:, 1], color='r', zorder=10, lw=2.5)
 
-def get_bg(time,flux,aper,epic,plot=True):
-	inds = where(aper == 0)
-	bg = []
-	num = sum(aper)
-
-	for i in range(0,len(time)):
-		f = array(flux[i][inds])
-		sig = nanstd(f)
-		med = nanmedian(f)
-		f[where(isnan(f)==1)] = 0
-		f = f[where(abs(f-med) < 3*sig)] #clip 3sigma outliers
-		#repeat
-		sig = nanstd(f)
-		med = nanmedian(f)
-		f = f[where(abs(f-med) < 3*sig)] 
-
-		med = nanmedian(f)
-		bg.append(med)
+    ax.set_xlim(0, aper.shape[1])
+    ax.set_ylim(0, aper.shape[0])
+    return ax
 
 
-	bg = array(bg)*num
-	sig = nanstd(bg)
-	med = nanmedian(bg)
-	# bg[where(isnan(bg)==1)] = 0
-	flagged = where(abs(bg-med)>7*sig)
-	if plot:
-		fig = plt.figure(figsize=(8,3))
-		fig.clf()
-		plt.plot(time,bg)
-		plt.xlabel('Time')
-		plt.ylabel('Background flux')
-		plt.title('Background flux')
-		plt.savefig('outputs/'+str(epic)+'_bg.pdf',bbox_inches='tight')
+def main(epic, field, cad):
+    targ = PixelTarget(epic, field, cad)
+    print 'Working on target ', epic
+    targ.read_fits()
+    print "Kep mag=", targ.data['kmag']
+    labels = targ.find_aper()
+    ftot = targ.aper_phot(labels)
+    circ_labels = targ.find_circ_aper(rad=targ.start_aper)
+    ftot_circ = targ.aper_phot(circ_labels)
 
-	return bg, flagged
+    fig = plt.figure(figsize=(8,8))
+    ax = fig.add_subplot(111)
+    ax = draw_aper(targ, labels, ax)
+    plt.savefig('outputs/'+epic+'_aper.png', dpi=150)
+    plt.close('all')
 
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111)
+    ax = draw_aper(targ, circ_labels, ax)
+    plt.savefig('outputs/' + epic + '_circ_aper.png', dpi=150)
 
-def get_cen(time,flux,aper,epic):
-	#find centroid and sum fluxes
-	# bg, flags = get_bg(time,flux,aper,epic)
-	# time = delete(time,flags)
-	# flux = delete(flux,flags,axis=0)
-	# bg = delete(bg,flags)
-
-	xc = []
-	yc = []
-	ftot = []
-
-	aperture_fluxes = flux*aper
-  	
-  	# sum over axis 2 and 1 (the X and Y positions), (axis 0 is the time)
-  	f_t = nansum(nansum(aperture_fluxes,axis=2), axis=1) #- bg
-  
- 	# first make a matrix that contains the x and y positions
-  	x_pixels = [range(0,shape(aperture_fluxes)[2])] * shape(aperture_fluxes)[1]
-  	y_pixels = transpose([range(0,shape(aperture_fluxes)[1])] * shape(aperture_fluxes)[2])
-  
-  	# multiply the position matrix with the aperture fluxes to obtain x_i*f_i and y_i*f_i
-  	xpos_times_flux = nansum( nansum( x_pixels*aperture_fluxes, axis=2), axis=1)
-  	ypos_times_flux = nansum( nansum( y_pixels*aperture_fluxes, axis=2), axis=1)
-  
-  	# calculate centroids
-  	xc = xpos_times_flux / f_t
-  	yc = ypos_times_flux / f_t
-
-  	ftot = f_t
-	ftot = array(ftot)
-	ftot /= median(ftot)
-
-	return time, ftot, xc, yc
-
-
-def plot_lc(time,ftot,xc,yc,epic):
-	# plt.close('all')
-	# fig = plt.figure(figsize=(8,3))
-	# fig.clf()
-	# plt.plot(time,ftot,marker='.',lw=0)
-	# plt.ylim(max([min(ftot),0.9]),1.05)
-	# plt.xlabel('Time')
-	# plt.ylabel('Flux (pixel counts)')
-	# plt.title('Raw light curve')
-	# plt.savefig('outputs/'+str(epic)+'_rawlc.pdf',bbox_inches='tight')
-	# plt.close(fig)
-
-	fig = plt.figure()
-	fig.clf()
-	plt.plot(time,yc)
-	plt.xlabel('Time')
-	plt.ylabel('Horizontal centroid shift (pixels)')
-	plt.savefig('outputs/'+str(epic)+'_ycentroid.pdf',bbox_inches='tight')
-	plt.close(fig)
-
-	fig = plt.figure()
-	fig.clf()
-	plt.plot(time,xc)
-	plt.xlabel('Time')
-	plt.ylabel('Vertical centroid shift (pixels)')
-	plt.savefig('outputs/'+str(epic)+'_xcentroid.pdf',bbox_inches='tight')
-	plt.close(fig)
-
-	
+    fig = plt.figure(figsize=(10,3))
+    plt.plot(targ.data['jd'], ftot, 'b.')
+    plt.plot(targ.data['jd'], ftot_circ, 'r.')
+    plt.savefig('outputs/' + epic + '_lc.png', dpi=150)
