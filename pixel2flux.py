@@ -221,6 +221,34 @@ class PixelTarget:
         labels = 1 * inside
         return labels
 
+    def remove_thrust(self, refx, refy, printtimes=False):
+        """
+
+        :param refx: x coords of reference star
+        :param refy: y coords of reference star
+        :param printtimes:
+        :return:
+        """
+        # find and remove points in middle of thruster events, divide LC into segments
+        diff_centroid = np.sqrt(np.diff(refx) ** 2 + np.diff(refy) ** 2)
+
+        thruster_mask = diff_centroid < 2 * np.mean(diff_centroid)  # True=gap not in middle of thruster event
+        thruster_mask1 = np.insert(thruster_mask, 0, False)  # True=gap before is not thruster event
+        thruster_mask2 = np.append(thruster_mask, False)  # True=gap after is not thruster event
+        thruster_mask = thruster_mask1 * thruster_mask2  # True=gaps before and after are not thruster events
+
+        # time_thruster = self.data['jd'][thruster_mask]
+        # diff_centroid_thruster = diff_centroid[thruster_mask[1:]]
+        # firetimes = self.data['jd'][np.where(~thruster_mask)[0]]
+
+        if printtimes:
+            print 'fire times', self.data['jd'][np.where(~thruster_mask)[0]]
+        self.data['x'] = self.data['x'][thruster_mask]
+        self.data['y'] = self.data['y'][thruster_mask]
+        self.data['jd'] = self.data['jd'][thruster_mask]
+        self.pixeldat = self.pixeldat[thruster_mask]
+        self.data['rlc'] = self.data['rlc'][thruster_mask]
+
 
 def draw_aper(pixeltarg, aper, ax):
     """
@@ -273,6 +301,14 @@ def main(epic, field, cad):
     print 'Working on target ', epic
     targ.read_fits()
     print "Kep mag=", targ.data['kmag']
+
+    # We won't need these steps once we have reference stars to determine where thruster fires are
+    labels = targ.find_aper()
+    ftot = targ.aper_phot(labels)
+
+    targ.remove_thrust(refx=targ.data['x'], refy=targ.data['y'], printtimes=True)
+
+    # remove thruster fires and do aperture photometry
     labels = targ.find_aper()
     ftot = targ.aper_phot(labels)
     circ_labels = targ.find_circ_aper(rad=targ.start_aper)
