@@ -21,7 +21,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import lctools as lc
 import sys
-from mcmc import run_mcmc
+# from mcmc import run_mcmc
 
 name = sys.argv[1]
 t0 = float(sys.argv[2])
@@ -65,4 +65,4 @@ transit_params = [0, fit.params['b'].value, fit.params['Rs_a'].value, fit.params
 oot = np.where(abs(dt_tra > excludewindow))[0]
 error = np.std(f_tra[oot])
 
-params = run_mcmc(name, transit_params, period, dt_tra, f_tra, error)
+# params = run_mcmc(name, transit_params, period, dt_tra, f_tra, error)
