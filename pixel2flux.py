@@ -18,13 +18,12 @@ class BadApertureError(Exception):
 class PixelTarget:
     def __init__(self, epic, field, cad):
         """
-
         :param epic: str, EPIC of target
         :param field: str, field number
         :param cad: 'l' (long) or 's' (short)
         :return:
         """
-        self.data = {'jd': [], 'rlc': [], 'x': [], 'y': [], 'cadence': cad, 'ra': [], 'dec': [], 'kmag': []}
+        self.data = {'jd': [], 'rlc': [], 'x': [], 'y': [], 'cadence': [], 'ra': [], 'dec': [], 'kmag': []}
         self.epic = epic
         self.field = field
         self.cad = cad
@@ -33,10 +32,15 @@ class PixelTarget:
         self.cutoff_limit = 3
         self.start_aper = 5
 
-    def read_fits(self, indir='pixel_files/'):
+    def __len__(self):
+        return len(self.data['jd'])
+
+    def read_fits(self, indir='pixel_files/', clean=True, outliers=[]):
         """
         Read pixel-level image.
         :param indir: directory where fits file is saved. Download fits files with wget before starting.
+        :param clean: if True, empty frames and known outliers will be removed.
+        :param outliers: indices of known outliers to be removed.
         :return:
         """
         filename = indir + 'ktwo' + str(self.epic) + '-c' + str(self.field) + '_' + self.cad + 'pd-targ.fits'
@@ -82,8 +86,20 @@ class PixelTarget:
         self.data['ra'] = RA
         self.data['dec'] = DEC
         self.data['kmag'] = kepmag
+        self.data['cadence'] = np.arange(len(flux), dtype=int)
+        if clean:
+            self.remove_nan()
+            self.remove_known_outliers(outliers)
 
-        self.remove_nan()
+    def remove_known_outliers(self, inds):
+        """
+        Do this along with remove_nan before centroiding.
+        :param inds: indices of known outliers.
+        :return:
+        """
+        self.data['jd'] = np.delete(self.data['jd'], inds)
+        self.pixeldat = np.delete(self.pixeldat, inds, axis=0)
+        self.data['cadence'] = np.delete(self.data['cadence'], inds)
 
     def find_aper(self, cutoff_limit=None, saturated=True):
         """
@@ -165,6 +181,7 @@ class PixelTarget:
 
         self.data['jd'] = np.delete(self.data['jd'], bad)
         self.pixeldat = np.delete(self.pixeldat, bad, axis=0)
+        self.data['cadence'] = np.delete(self.data['cadence'], bad)
 
     def aper_phot(self, aper):
         """
@@ -221,28 +238,39 @@ class PixelTarget:
         labels = 1 * inside
         return labels
 
-    def remove_thrust(self, refx, refy, printtimes=False):
+    def find_thrust(self, refx, refy, printtimes=False):
         """
-
+        Find points in middle of thruster events. For use on reference stars only
         :param refx: x coords of reference star
         :param refy: y coords of reference star
-        :param printtimes:
+        :param printtimes: True if you want to see list of identified thruster fire times.
+        :param remove: True if you want thruster fire points to be removed. Otherwise returns thruster_mask without
+        altering target data.
         :return:
         """
-        # find and remove points in middle of thruster events, divide LC into segments
+
         diff_centroid = np.sqrt(np.diff(refx) ** 2 + np.diff(refy) ** 2)
 
-        thruster_mask = diff_centroid < 2 * np.mean(diff_centroid)  # True=gap not in middle of thruster event
+        thruster_mask = diff_centroid < 4 * np.median(diff_centroid)  # True=gap not in middle of thruster event
         thruster_mask1 = np.insert(thruster_mask, 0, False)  # True=gap before is not thruster event
         thruster_mask2 = np.append(thruster_mask, False)  # True=gap after is not thruster event
         thruster_mask = thruster_mask1 * thruster_mask2  # True=gaps before and after are not thruster events
 
         # time_thruster = self.data['jd'][thruster_mask]
-        # diff_centroid_thruster = diff_centroid[thruster_mask[1:]]
-        # firetimes = self.data['jd'][np.where(~thruster_mask)[0]]
 
         if printtimes:
             print 'fire times', self.data['jd'][np.where(~thruster_mask)[0]]
+        return thruster_mask, self.data['cadence'][np.where(thruster_mask)]
+
+    def remove_thrust(self, refcad):
+        """
+        Remove thruster fires identified from reference stars.
+        :param refcad: cadence numbers of points free from thruster fires.
+        :return:
+        """
+        # refcad = np.intersect1d(refcad, self.data['cadence'])  # exclude frames that have already
+        # been cleaned out in remove_nan
+        thruster_mask = np.array([self.data['cadence'][i] in refcad for i in range(len(self.data['cadence']))])
         self.data['x'] = self.data['x'][thruster_mask]
         self.data['y'] = self.data['y'][thruster_mask]
         self.data['jd'] = self.data['jd'][thruster_mask]
@@ -296,21 +324,23 @@ def draw_aper(pixeltarg, aper, ax):
     return ax
 
 
-def main(epic, field, cad):
+def test(epic, field, cad, refcadfile):
     targ = PixelTarget(epic, field, cad)
     print 'Working on target ', epic
     targ.read_fits()
     print "Kep mag=", targ.data['kmag']
 
-    # We won't need these steps once we have reference stars to determine where thruster fires are
+    refcad = np.loadtxt(refcadfile, dtype=int)
     labels = targ.find_aper()
     ftot = targ.aper_phot(labels)
-
-    targ.remove_thrust(refx=targ.data['x'], refy=targ.data['y'], printtimes=True)
+    fig = plt.figure(figsize=(15,4))
+    plt.plot(targ.data['jd'], ftot, 'b.')
 
     # remove thruster fires and do aperture photometry
-    labels = targ.find_aper()
+    targ.remove_thrust(refcad)
     ftot = targ.aper_phot(labels)
+    plt.plot(targ.data['jd'], ftot, 'r.')
+    plt.show()
     circ_labels = targ.find_circ_aper(rad=targ.start_aper)
     ftot_circ = targ.aper_phot(circ_labels)
 
@@ -329,3 +359,6 @@ def main(epic, field, cad):
     plt.plot(targ.data['jd'], ftot, 'b.')
     plt.plot(targ.data['jd'], ftot_circ, 'r.')
     plt.savefig('outputs/' + epic + '_lc.png', dpi=150)
+
+# def main(epic, field, cad, thruster_mask):
+#
