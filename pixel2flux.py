@@ -360,5 +360,23 @@ def test(epic, field, cad, refcadfile):
     plt.plot(targ.data['jd'], ftot_circ, 'r.')
     plt.savefig('outputs/' + epic + '_lc.png', dpi=150)
 
-# def main(epic, field, cad, thruster_mask):
-#
+
+def main(epic, field, cad, refcad):
+    targ = PixelTarget(epic, field, cad)
+    print 'Working on target ', epic
+    targ.read_fits()
+    print "Kep mag=", targ.data['kmag']
+
+    targ.remove_thrust(refcad)
+    labels = targ.find_aper()
+    ftot = targ.aper_phot(labels)
+
+    ftot_all = {'arbitrary': ftot}
+    rads = np.arange(targ.start_aper-1, targ.start_aper+3)
+    for r in rads:
+        circ_labels = targ.find_circ_aper(rad=r)
+        ftot_circ = targ.aper_phot(circ_labels)
+        ftot_all[str(r)] = ftot_circ
+
+    # update the output to print in an appropriate format
+    return targ, ftot_all

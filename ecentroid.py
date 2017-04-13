@@ -1,4 +1,9 @@
-# Plots any selected star for the purpose of selecting good reference star for detrending
+"""
+Plots any selected star(s) to use as reference star(s) for detrending.
+Writes good frame numbers into file named ref_cad.dat, and centroids into ref_centroid.dat (for one chosen star only,
+but we can probably average a few).
+
+"""
 from pixel2flux import *
 import matplotlib.pyplot as plt
 import numpy as np
