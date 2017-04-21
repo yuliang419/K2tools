@@ -211,6 +211,13 @@ class PixelTarget:
         ftot = np.array(ftot)
         ftot /= np.median(ftot)
 
+        bad = np.where(ftot <= 0)
+        xc[bad] = -100
+        yc[bad] = -100
+
+        # good = np.where(ftot > 0)
+        # self.data['jd'] = self.data['jd'][good]
+        # self.data['cadence'] = self.data['cadence'][good]
         self.data['x'] = xc
         self.data['y'] = yc
         self.data['rlc'] = ftot
@@ -238,17 +245,20 @@ class PixelTarget:
         labels = 1 * inside
         return labels
 
-    def find_thrust(self, refx, refy, printtimes=False):
+    def find_thrust(self, printtimes=False):
         """
         Find points in middle of thruster events. For use on reference stars only
-        :param refx: x coords of reference star
-        :param refy: y coords of reference star
         :param printtimes: True if you want to see list of identified thruster fire times.
         :param remove: True if you want thruster fire points to be removed. Otherwise returns thruster_mask without
         altering target data.
         :return:
+        refcad: array of cadence numbers that don't fall in thruster fires
         """
 
+        refx = self.data['x']
+        refy = self.data['y']
+        if len(refx) < 1:
+            raise ValueError('No centroids available. Run aper_phot first.')
         diff_centroid = np.sqrt(np.diff(refx) ** 2 + np.diff(refy) ** 2)
 
         thruster_mask = diff_centroid < 4 * np.median(diff_centroid)  # True=gap not in middle of thruster event
@@ -259,8 +269,8 @@ class PixelTarget:
         # time_thruster = self.data['jd'][thruster_mask]
 
         if printtimes:
-            print 'fire times', self.data['jd'][np.where(~thruster_mask)[0]]
-        return thruster_mask, self.data['cadence'][np.where(thruster_mask)]
+            print 'thruster fire frame numbers', self.data['cadence'][np.where(~thruster_mask)[0]]
+        return self.data['cadence'][np.where(thruster_mask)]
 
     def remove_thrust(self, refcad):
         """
@@ -271,11 +281,12 @@ class PixelTarget:
         # refcad = np.intersect1d(refcad, self.data['cadence'])  # exclude frames that have already
         # been cleaned out in remove_nan
         thruster_mask = np.array([self.data['cadence'][i] in refcad for i in range(len(self.data['cadence']))])
-        self.data['x'] = self.data['x'][thruster_mask]
-        self.data['y'] = self.data['y'][thruster_mask]
+        # self.data['x'] = self.data['x'][thruster_mask]
+        # self.data['y'] = self.data['y'][thruster_mask]
         self.data['jd'] = self.data['jd'][thruster_mask]
         self.pixeldat = self.pixeldat[thruster_mask]
-        self.data['rlc'] = self.data['rlc'][thruster_mask]
+        # self.data['rlc'] = self.data['rlc'][thruster_mask]
+        self.data['cadence'] = self.data['cadence'][thruster_mask]
 
 
 def draw_aper(pixeltarg, aper, ax):
@@ -369,6 +380,10 @@ def main(epic, field, cad, refcad):
 
     targ.remove_thrust(refcad)
     labels = targ.find_aper()
+    fig = plt.figure(figsize=(8,8))
+    ax = fig.add_subplot(111)
+    ax = draw_aper(targ, labels, ax)
+    plt.savefig('outputs/' + epic + '_aper.png', dpi=150)
     ftot = targ.aper_phot(labels)
 
     ftot_all = {'arbitrary': ftot}
@@ -380,3 +395,20 @@ def main(epic, field, cad, refcad):
 
     # update the output to print in an appropriate format
     return targ, ftot_all
+
+if __name__ == '__main__':
+    epic = '211822797'
+    field = '05'
+    cad = 'l'
+    refcad = np.loadtxt('ref_cad.dat', dtype=int)
+
+    targ, ftot = main(epic, field, cad, refcad)
+
+    outfile = open('outputs/'+epic+'_rawlc.dat', 'w')
+    rads = sorted(ftot.keys())
+    print>>outfile, '# jd   %s  %s  %s  %s  %s  x   y' % (rads[0], rads[1], rads[2], rads[3], rads[4])
+    for i in range(len(targ)):
+        print>>outfile, targ.data['jd'][i], ftot[rads[0]][i], ftot[rads[1]][i], ftot[rads[2]][i], ftot[rads[3]][i], \
+            ftot[rads[4]][i], targ.data['x'][i], targ.data['y'][i]
+
+    outfile.close()
