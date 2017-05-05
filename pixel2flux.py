@@ -5,6 +5,10 @@ import pyfits
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max as plm
 from matplotlib.colors import LogNorm
+import logging
+import glob
+import multiprocessing
+import sys
 
 
 class BadApertureError(Exception):
@@ -24,6 +28,7 @@ class PixelTarget:
         :return:
         """
         self.data = {'jd': [], 'rlc': [], 'x': [], 'y': [], 'cadence': [], 'ra': [], 'dec': [], 'kmag': []}
+
         self.epic = epic
         self.field = field
         self.cad = cad
@@ -77,7 +82,7 @@ class PixelTarget:
         # y = hdulist[2].header['CRVAL1P']  # y position of pixel
 
         if kepmag <= 10:
-            print 'WARNING: saturated target'
+            logger.warning('Target %s is saturated', self.epic)
             self.saturated = True
             self.start_aper = 8
 
@@ -120,9 +125,10 @@ class PixelTarget:
 
         while np.sum(aper) <= 1:
             print 'bad aper'
+            logger.warning('%s : Cut off limit too high', self.epic)
             # cutoff_limit too high so that 1 or 0 pixels are selected
             cutoff_limit -= 0.2
-            print 'New cutoff_limit:', cutoff_limit
+            logger.info('Cut off limit set to %s', str(cutoff_limit))
             cutoff = cutoff_limit * np.median(fsum)
             aper = np.array([fsum > cutoff])
             aper = 1 * aper  # arrays of 0s and 1s
@@ -159,11 +165,12 @@ class PixelTarget:
 
         labels /= labels.max()
         while np.sum(labels) <= 1:
-            print 'Flux centroid detection failed. Retrying with smaller cutoff_limit.'
+            logger.info('%s : Flux centroid detection failed. Retrying with smaller cutoff_limit.', self.epic)
             cutoff_limit -= 0.2
             labels = self.find_aper(cutoff_limit=cutoff_limit, saturated=False)
 
         if type(labels) == int:
+            logger.exception('%s : Failed aperture. Target abandoned.', self.epic)
             raise BadApertureError('Failed aperture. Giving up on target.')
 
         return labels
@@ -374,16 +381,14 @@ def test(epic, field, cad, refcadfile):
 
 def main(epic, field, cad, refcad):
     targ = PixelTarget(epic, field, cad)
-    print 'Working on target ', epic
     targ.read_fits()
-    print "Kep mag=", targ.data['kmag']
 
     targ.remove_thrust(refcad)
     labels = targ.find_aper()
-    fig = plt.figure(figsize=(8,8))
-    ax = fig.add_subplot(111)
-    ax = draw_aper(targ, labels, ax)
-    plt.savefig('outputs/' + epic + '_aper.png', dpi=150)
+    # fig = plt.figure(figsize=(8,8))
+    # ax = fig.add_subplot(111)
+    # ax = draw_aper(targ, labels, ax)
+    # plt.savefig('outputs/' + epic + '_aper.png', dpi=150)
     ftot = targ.aper_phot(labels)
 
     ftot_all = {'arbitrary': ftot}
@@ -396,15 +401,18 @@ def main(epic, field, cad, refcad):
     # update the output to print in an appropriate format
     return targ, ftot_all
 
-if __name__ == '__main__':
-    epic = '211822797'
-    field = '05'
-    cad = 'l'
-    refcad = np.loadtxt('ref_cad.dat', dtype=int)
 
-    targ, ftot = main(epic, field, cad, refcad)
-
-    outfile = open('outputs/'+epic+'_rawlc.dat', 'w')
+def extract_multi(args, outdir='rawlc/'):
+    epic = args[0]
+    field = args[1]
+    cad = args[2]
+    refcad = args[3]
+    logger.info('Working on %s', epic)
+    try:
+        targ, ftot = main(epic, field, cad, refcad)
+    except BadApertureError:
+        return
+    outfile = open(outdir+epic+'_rawlc.dat', 'w')
     rads = sorted(ftot.keys())
     print>>outfile, '# jd   %s  %s  %s  %s  %s  x   y' % (rads[0], rads[1], rads[2], rads[3], rads[4])
     for i in range(len(targ)):
@@ -412,3 +420,27 @@ if __name__ == '__main__':
             ftot[rads[4]][i], targ.data['x'][i], targ.data['y'][i]
 
     outfile.close()
+
+
+if __name__ == '__main__':
+    epics = np.loadtxt('filelist.txt', dtype=str)
+    field = '05'
+    cad = 'l'
+    refcad = np.loadtxt('ref_cad.dat', dtype=int)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logger = multiprocessing.get_logger()
+    hdlr = logging.FileHandler('pixel2flux.log')
+    hdlr.setFormatter(formatter)
+    logger.addHandler(hdlr) 
+    ch = logging.StreamHandler(stream=sys.stdout)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    logger.setLevel(logging.DEBUG)
+    logger.info('Process started')
+
+    pool = multiprocessing.Pool(processes=3)
+    TASK = [(epics[i], field, cad, refcad) for i in range(len(epics))]
+    pool.map(extract_multi, TASK)
+
+
+
