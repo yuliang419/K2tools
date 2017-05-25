@@ -22,21 +22,21 @@ for epic in epics:
     targ = PixelTarget(epic, field, 'l')
     targ.read_fits(clean=False)
     print len(targ)
-    if targ.data['kmag'] > 15:
+    if targ.kmag > 15:
         print 'Reference star too faint'
         continue
-    elif targ.data['kmag'] <= 10:
+    elif targ.kmag <= 10:
         continue
 
-    labels = targ.find_aper()
+    aperture = targ.find_aper()
     fig = plt.figure(figsize=(8,8))
     ax = fig.add_subplot(111)
-    draw_aper(targ, labels, ax)
+    draw_aper(targ, aperture.labels, ax)
     plt.savefig('outputs/'+epic+'_aper.png', dpi=150)
 
-    ftot = targ.aper_phot(labels)
+    ftot = targ.aper_phot(aperture)
     goodcads = targ.find_thrust(printtimes=False)
-    print len(goodcads)
+    print 'No thruster fire:', len(goodcads)
     master_mask.append(goodcads)
     master_x.append(targ.data['x'])
     master_y.append(targ.data['y'])
@@ -46,7 +46,7 @@ ref_y = np.nanmedian(master_y, axis=0)
 
 master_mask = np.array(master_mask)
 cnt = Counter(np.hstack(master_mask))
-refcad = [k for k, v in cnt.iteritems() if v > 1]
+refcad = [k for k, v in cnt.iteritems() if v > 1]  # point is good if it's good in at least two targets
 
 print 'no. of good points=', len(refcad)
 
@@ -63,8 +63,8 @@ print 'no. of good points=', len(refcad)
 for epic in epics:
     targ = PixelTarget(epic, field, 'l')
     targ.read_fits(clean=False)
-    labels = targ.find_aper()
-    ftot = targ.aper_phot(labels)
+    aperture = targ.find_aper()
+    ftot = targ.aper_phot(aperture)
     bad = [i for i in targ.data['cadence'] if i not in refcad]
 
     fig, ax = plt.subplots(2, 2, figsize=(15,12))
