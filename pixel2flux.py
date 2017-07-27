@@ -9,8 +9,9 @@ import logging
 import glob
 import multiprocessing
 import sys
+import os
 from astropy.stats import median_absolute_deviation
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 
@@ -23,24 +24,33 @@ class BadApertureError(Exception):
 
 
 class Aperture:
-    def __init__(self, labels, aperinfo):
+    def __init__(self, labels, aperinfo, cent):
+        """
+
+        :param labels: aperture mask.
+        :param aperinfo: choose from 'arbitrary' or the radius of a circular aperture.
+        :param cent: location of centroid. This is given as a mask of 0s and 1s for an arbitrary aperture,
+        and as a coordinate pair for a circular aperture.
+        """
         self.aperinfo = aperinfo
         self.labels = labels
+        self.cent = cent
 
     def __str__(self):
         return 'Aperture shape: %s', self.aperinfo
 
 
 class PixelTarget:
-    def __init__(self, epic, field, cad):
+    def __init__(self, fname, field, cad):
         """
-        :param epic: str, EPIC of target
+        :param epic: str, file name of target (used to be just EPIC)
         :param field: str, field number
         :param cad: 'l' (long) or 's' (short)
         :return:
         """
         self.data = {'jd': [], 'rlc': [], 'x': [], 'y': [], 'cadence': []}
-
+        # epic = os.path.split(fname)[1][4:13]
+        epic = fname[4:13]
         self.epic = epic
         self.field = field
         self.cad = cad
@@ -55,6 +65,8 @@ class PixelTarget:
         self.dec = np.nan
         self.kmag = np.nan
         self.aperinfo = 'unknown'
+        self.med_x = np.nan
+        self.med_y = np.nan
 
     def __len__(self):
         return len(self.data['jd'])
@@ -67,6 +79,7 @@ class PixelTarget:
         :param outliers: indices of known outliers to be removed.
         :return:
         """
+        indir = indir + 'c' + self.field + '/'
         filename = indir + 'ktwo' + str(self.epic) + '-c' + str(self.field) + '_' + self.cad + 'pd-targ.fits'
         # flux may contain nans
 
@@ -117,7 +130,7 @@ class PixelTarget:
         self.dec = DEC
         self.kmag = kepmag
         self.bgframe = np.array(bg)
-        self.data['cadence'] = np.arange(len(flux), dtype=int)  # note: refcad can be used as indices before thruster
+        self.data['cadence'] = np.arange(len(flux), dtype=int) #FIXME # note: refcad can be used as indices before thruster
         #  or nan removal
 
         if clean:
@@ -172,11 +185,15 @@ class PixelTarget:
         threshold_rel = 0.0002
         if cutoff_limit < 2.5:
             threshold_rel /= 10  # dealing with faint sources
+        if self.kmag >= 18:
+            threshold_rel /= 10
+        if self.kmag >= 16:
+            min_dist = 1
 
         # detect local maxima in 2D image
-        local_max = plm(fsum, indices=False, min_distance=min_dist, exclude_border=False,
+        local_max = plm(fsum, indices=False, min_distance=min_dist, exclude_border=1,
                         threshold_rel=threshold_rel)  # threshold_rel determined by trial & error
-        coords = plm(fsum, indices=True, min_distance=min_dist, exclude_border=False, threshold_rel=threshold_rel)
+        coords = plm(fsum, indices=True, min_distance=min_dist, exclude_border=1, threshold_rel=threshold_rel)
 
         dist = 100
         markers = ndi.label(local_max)[0]
@@ -188,6 +205,10 @@ class PixelTarget:
             newdist = ((coord[0] - aper.shape[1] / 2.) ** 2 + (coord[1] - aper.shape[2] / 2.) ** 2) ** 0.5
             if (newdist < dist) and (markers[coord[0], coord[1]] in np.unique(labels)):
                 centnum = markers[coord[0], coord[1]]
+                # if mag >= 17, force centroid to be near centre of image
+                if self.kmag >= 17:
+                    self.med_x = coord[0]
+                    self.med_y = coord[1]
                 dist = newdist
 
         # in case there are more than one maxima
@@ -195,28 +216,29 @@ class PixelTarget:
             labels = 1 * (labels == centnum)
 
         labels /= labels.max()
-        iter = 0
-        while np.sum(labels) <= 1:
-            if iter >= 5:
+
+        if np.sum(labels) <= 1:
+            if cutoff_limit <= 0.06:
                 fig = plt.figure(figsize=(8, 8))
                 plt.imshow(fsum, norm=LogNorm(), interpolation='none')
                 plt.set_cmap('gray')
-                plt.savefig('outputs/' + self.epic + '_badaper.png', dpi=150)
+                plt.savefig('outputs/c' +self.field+ '/' + self.epic + '_badaper.png', dpi=150)
                 plt.close()
                 logger.exception('%s : Failed aperture. Target abandoned.', self.epic)
                 raise BadApertureError('Failed aperture. Giving up on target.')
 
-            logger.info('%s : Flux centroid detection failed. Retrying with smaller cutoff_limit. iter = %s',
-                        self.epic, iter)
+            # logger.info('%s : Flux centroid detection failed. Retrying with smaller cutoff_limit. cutoff_limit=%s',
+            #             self.epic, cutoff_limit)
             cutoff_limit -= 0.2
-            labels = self.find_aper(cutoff_limit=cutoff_limit, faint=True)
-            iter += 1
+            aper = self.find_aper(cutoff_limit=cutoff_limit, faint=True)
+            labels = aper.labels
 
         if type(labels) == int:
-            logger.exception('%s : Failed aperture. Target abandoned.', self.epic)
+            # logger.exception('%s : Failed aperture. Target abandoned.', self.epic)
             raise BadApertureError('Failed aperture. Giving up on target.')
 
-        aperture = Aperture(labels, 'arbitrary')
+        aperture = Aperture(labels, 'arbitrary', local_max)
+
         return aperture
 
     def remove_nan(self):
@@ -289,6 +311,8 @@ class PixelTarget:
         # good = np.where(ftot > 0)
         # self.data['jd'] = self.data['jd'][good]
         # self.data['cadence'] = self.data['cadence'][good]
+
+        # FIXME: centroid coords will still only be those for irregular centroid, even if it contains contamination
         self.data['x'] = xc
         self.data['y'] = yc
         self.data['rlc'] = ftot
@@ -312,8 +336,12 @@ class PixelTarget:
         if len(self.data['x']) == 0:
             print 'Error: centroid coordinates not found. Run aper_phot first to find centroid.'
             return
-        med_x = np.median(self.data['x'])
-        med_y = np.median(self.data['y'])
+        if np.isnan(self.med_x):
+            med_x = np.median(self.data['x'])
+            med_y = np.median(self.data['y'])
+        else:
+            med_x = self.med_x
+            med_y = self.med_y
         frame = self.pixeldat[0]
         x_pixels = [range(0, np.shape(frame)[1])] * np.shape(frame)[0]
         y_pixels = np.transpose([range(0, np.shape(frame)[0])] * np.shape(frame)[1])
@@ -321,7 +349,7 @@ class PixelTarget:
         inside = ((x_pixels - med_x) ** 2. + (y_pixels - med_y) ** 2.) < rad ** 2.
         labels = 1 * inside
         aperinfo = 'circular %s' % (rad)
-        aperture = Aperture(labels, aperinfo)
+        aperture = Aperture(labels, aperinfo, [med_x, med_y])
         return aperture
 
     def find_thrust(self, printtimes=False):
@@ -451,6 +479,21 @@ def test(epic, field, cad, refcadfile):
     plt.pause(0.01)
 
 
+def extract_fixed_aper(epic, field, cad, refcad):
+    targ = PixelTarget(epic, field, cad)
+    targ.read_fits()
+
+    targ.remove_thrust(refcad)
+    aperture = targ.find_aper()
+    _ = targ.aper_phot(aperture)
+
+    rad = 3
+    circ_apers = targ.find_circ_aper(rad)
+    _ = targ.aper_phot(circ_apers)
+
+    return targ, targ.poisson
+
+
 def main(epic, field, cad, refcad):
     targ = PixelTarget(epic, field, cad)
     targ.read_fits()
@@ -482,7 +525,7 @@ def main(epic, field, cad, refcad):
     ax = fig.add_subplot(111)
     ax = draw_aper(targ, best_aper, ax)
     ax.set_title('Rad ='+best_rad)
-    plt.savefig('outputs/' + epic + '_aper.png', dpi=150)
+    plt.savefig('outputs/c' + field + '/' + targ.epic + '_aper.png', dpi=150)
     plt.pause(0.01)
     plt.close()
 
@@ -495,11 +538,13 @@ def extract_multi(args, outdir='rawlc/'):
     cad = args[2]
     refcad = args[3]
     logger.info('Working on %s', epic)
+
+    outdir = outdir+'/c'+field+'/'
     try:
         targ, ftot, poisson_all, best_rad = main(epic, field, cad, refcad)
     except (BadApertureError, ValueError):
         return
-    outfile = open(outdir+epic+'_rawlc.dat', 'w')
+    outfile = open(outdir+targ.epic+'_rawlc.dat', 'w')
     rads = sorted(ftot.keys())
 
     logger.info('%s: best aperture = %s', epic, best_rad)
@@ -515,15 +560,15 @@ def extract_multi(args, outdir='rawlc/'):
     outfile.close()
 
     with open('poisson.txt', 'a') as outfile:
-        print>>outfile, epic, targ.kmag, poisson_all[best_rad]
+        print>>outfile, targ.epic, targ.kmag, poisson_all[best_rad]
 
 
 if __name__ == '__main__':
 
-    epics = np.loadtxt('filelist.txt', dtype=str)
-    field = '05'
+    epics = np.loadtxt('filelist2.txt', dtype=str)
+    field = '112'
     cad = 'l'
-    refcad = np.loadtxt('ref_cad.dat', dtype=int)
+    refcad = np.loadtxt('ref_cad2.dat', dtype=int)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger = multiprocessing.get_logger()
     hdlr = logging.FileHandler('pixel2flux.log', mode='w')
@@ -535,8 +580,8 @@ if __name__ == '__main__':
     logger.setLevel(logging.INFO)
     logger.info('Process started')
 
-    with open('poisson.txt', 'a') as outfile:
-        print>>outfile, '# epic kepmag  poisson'
+    # with open('poisson.txt', 'a') as outfile:
+    #     print>>outfile, '# epic kepmag  poisson'
 
     pool = multiprocessing.Pool(processes=3)
     TASK = [(epics[i], field, cad, refcad) for i in range(len(epics))]

@@ -76,8 +76,8 @@ for epic in epics:
     colors = ['r', 'y', 'g', 'c', 'b', 'm']
     inds = np.linspace(0, len(targ.data['jd']), 7)
     for i in range(len(inds) - 1):
-        start = inds[i]
-        end = inds[i + 1]
+        start = int(inds[i])
+        end = int(inds[i + 1])
         ax[0, 1].plot(targ.data['x'][start:end], targ.data['y'][start:end], marker='.', lw=0, color=colors[i])
 
     ax[0, 1].set_xlabel('x')
