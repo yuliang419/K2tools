@@ -80,7 +80,7 @@ def sed(kic, ra, dec, ax):
         for it, tval in enumerate(t):
             for ig, gval in enumerate(g):
                 # load model
-                hdulist = pyfits.open('../fits/' + metallicity[im] + '/' + metallicity[im] + '_' + str(tval) + '.fits')
+                hdulist = pyfits.open('fits/' + metallicity[im] + '/' + metallicity[im] + '_' + str(tval) + '.fits')
                 data = hdulist[1].data
                 wmod = data['WAVELENGTH']
                 fmod = data[log_g[ig]] * 3.34e4 * wmod ** 2
@@ -111,7 +111,7 @@ def sed(kic, ra, dec, ax):
     ax.set_xscale('log')
     ax.plot(wav_ob / 1e4, f_ob_orig, lw=0, marker='s', label='Uncorrected', ms=10)
     ax.plot(wav_ob / 1e4, f_ob, lw=0, marker='o', label='Corrected for extinction', ms=10)
-    ax.xlabel(r'${\rm Wavelength} \ (\mu m)}$', fontsize=18)
+    ax.set_xlabel(r'${\rm Wavelength} \ (\mu m)}$', fontsize=18)
     ax.set_xlim(0.1, max(wmod) / 1e4)
     ax.set_ylabel(r'$F_{\nu} \ {\rm (Jy)}$', fontsize=18)
     ax.legend()

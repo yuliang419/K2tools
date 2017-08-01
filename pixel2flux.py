@@ -79,7 +79,6 @@ class PixelTarget:
         :param outliers: indices of known outliers to be removed.
         :return:
         """
-        indir = indir + 'c' + self.field + '/'
         filename = indir + 'ktwo' + str(self.epic) + '-c' + str(self.field) + '_' + self.cad + 'pd-targ.fits'
         # flux may contain nans
 
@@ -162,6 +161,13 @@ class PixelTarget:
             cutoff_limit = self.cutoff_limit
 
         fsum = np.nansum(self.pixeldat, axis=0)  # sum over all images
+
+        bad= np.where(fsum == 0)  # why?? Need to add check for pixels with abnormally low flux, not just zeros
+        if len(bad) > 0:
+            good = np.where(fsum.ravel() > 0)
+            fsum[bad] = min(fsum.ravel()[good])
+            #logger.info('%s: fixed bad pixel', self.epic)
+
         fsum -= min(fsum.ravel())
         cutoff = cutoff_limit * np.median(fsum)
         aper = np.array([fsum > cutoff])
@@ -222,7 +228,7 @@ class PixelTarget:
                 fig = plt.figure(figsize=(8, 8))
                 plt.imshow(fsum, norm=LogNorm(), interpolation='none')
                 plt.set_cmap('gray')
-                plt.savefig('outputs/c' +self.field+ '/' + self.epic + '_badaper.png', dpi=150)
+                plt.savefig('outputs/' + self.epic + '_badaper.png', dpi=150)
                 plt.close()
                 logger.exception('%s : Failed aperture. Target abandoned.', self.epic)
                 raise BadApertureError('Failed aperture. Giving up on target.')
@@ -525,7 +531,7 @@ def main(epic, field, cad, refcad):
     ax = fig.add_subplot(111)
     ax = draw_aper(targ, best_aper, ax)
     ax.set_title('Rad ='+best_rad)
-    plt.savefig('outputs/c' + field + '/' + targ.epic + '_aper.png', dpi=150)
+    plt.savefig('outputs/' + targ.epic + '_aper.png', dpi=150)
     plt.pause(0.01)
     plt.close()
 
@@ -539,7 +545,6 @@ def extract_multi(args, outdir='rawlc/'):
     refcad = args[3]
     logger.info('Working on %s', epic)
 
-    outdir = outdir+'/c'+field+'/'
     try:
         targ, ftot, poisson_all, best_rad = main(epic, field, cad, refcad)
     except (BadApertureError, ValueError):
@@ -565,10 +570,10 @@ def extract_multi(args, outdir='rawlc/'):
 
 if __name__ == '__main__':
 
-    epics = np.loadtxt('filelist2.txt', dtype=str)
-    field = '112'
+    epics = np.loadtxt('filelist.txt', dtype=str)
+    field = '12'
     cad = 'l'
-    refcad = np.loadtxt('ref_cad2.dat', dtype=int)
+    refcad = np.loadtxt('ref_centroid.dat', usecols=[0], dtype=int)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger = multiprocessing.get_logger()
     hdlr = logging.FileHandler('pixel2flux.log', mode='w')

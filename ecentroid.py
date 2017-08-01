@@ -114,5 +114,5 @@ if write:
     for i in range(0, len(targ.data['jd'])):
         if (targ.data['cadence'][i] > 0) and (targ.data['cadence'][i] - targ.data['cadence'][i - 1] > 1):
             seg += 1
-        print>> outfile, targ.data['cadence'][i], ref_x[i], ref_y[i], seg
+        print>> outfile, targ.data['cadence'][i], ref_x[i], ref_y[i], seg, targ.data['jd'][i]
     outfile.close()
