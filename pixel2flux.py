@@ -11,7 +11,7 @@ import multiprocessing
 import sys
 import os
 from astropy.stats import median_absolute_deviation
-# matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 
@@ -41,7 +41,7 @@ class Aperture:
 
 
 class PixelTarget:
-    def __init__(self, fname, field, cad):
+    def __init__(self, fname, field, cad, logging=True):
         """
         :param epic: str, file name of target (used to be just EPIC)
         :param field: str, field number
@@ -51,6 +51,7 @@ class PixelTarget:
         self.data = {'jd': [], 'rlc': [], 'x': [], 'y': [], 'cadence': []}
         # epic = os.path.split(fname)[1][4:13]
         epic = fname[4:13]
+        self.logging = logging
         self.epic = epic
         self.field = field
         self.cad = cad
@@ -119,7 +120,8 @@ class PixelTarget:
         # y = hdulist[2].header['CRVAL1P']  # y position of pixel
 
         if kepmag <= 10:
-            logger.warning('Target %s is saturated', self.epic)
+            if self.logging:
+                logger.warning('Target %s is saturated', self.epic)
             self.saturated = True
             self.start_aper = 8
 
@@ -174,10 +176,12 @@ class PixelTarget:
         aper = 1 * aper  # convert to arrays of 0s and 1s (1s inside aper)
 
         while np.sum(aper) <= 1:
-            logger.warning('%s : Cut off limit too high', self.epic)
+            if self.logging:
+                logger.warning('%s : Cut off limit too high', self.epic)
             # cutoff_limit too high so that 1 or 0 pixels are selected
             cutoff_limit -= 0.2
-            logger.info('Cut off limit set to %s', str(cutoff_limit))
+            if self.logging:
+                logger.info('Cut off limit set to %s', str(cutoff_limit))
             cutoff = cutoff_limit * np.median(fsum)
             aper = np.array([fsum > cutoff])
             aper = 1 * aper  # arrays of 0s and 1s
@@ -230,7 +234,8 @@ class PixelTarget:
                 plt.set_cmap('gray')
                 plt.savefig('outputs/' + self.epic + '_badaper.png', dpi=150)
                 plt.close()
-                logger.exception('%s : Failed aperture. Target abandoned.', self.epic)
+                if self.logging:
+                    logger.exception('%s : Failed aperture. Target abandoned.', self.epic)
                 raise BadApertureError('Failed aperture. Giving up on target.')
 
             # logger.info('%s : Flux centroid detection failed. Retrying with smaller cutoff_limit. cutoff_limit=%s',
@@ -293,8 +298,10 @@ class PixelTarget:
 
         ftot = f_t
         ftot = np.array(ftot)
+
         if np.median(ftot) < 0:
-            logger.exception('%s: total flux < 0', self.epic)
+            if self.logging:
+                logger.exception('%s: total flux < 0', self.epic)
             raise ValueError('Bad fits file: total flux < 0')
 
         na = np.sum(aper)
@@ -500,13 +507,16 @@ def extract_fixed_aper(epic, field, cad, refcad):
     return targ, targ.poisson
 
 
-def main(epic, field, cad, refcad):
-    targ = PixelTarget(epic, field, cad)
+def main(epic, field, cad, refcad, logging=True):
+    targ = PixelTarget(epic, field, cad, logging)
     targ.read_fits()
 
+    # logger.debug('Removing thrusters')
     targ.remove_thrust(refcad)
+    # logger.debug('Finding aper')
     aperture = targ.find_aper()
 
+    # logger.debug('Performing aperture photometry')
     ftot = targ.aper_phot(aperture)
 
     mad = median_absolute_deviation(ftot)
@@ -515,8 +525,13 @@ def main(epic, field, cad, refcad):
 
     ftot_all = {'arbitrary': ftot}
     poisson_all = {'arbitrary': targ.poisson}
-    rads = np.arange(targ.start_aper-1, targ.start_aper+3)
+    if targ.start_aper > 2:
+        rads = np.arange(targ.start_aper-1, targ.start_aper+3)
+    else:
+        rads = np.arange(2, 6)
+    # logger.debug('Looping through all rads')
     for r in rads:
+        # logger.debug('Rad=%s', r)
         circ_apers = targ.find_circ_aper(rad=r)
         ftot_circ = targ.aper_phot(circ_apers)
         ftot_all[str(r)] = ftot_circ
@@ -570,7 +585,7 @@ def extract_multi(args, outdir='rawlc/'):
 
 if __name__ == '__main__':
 
-    epics = np.loadtxt('filelist.txt', dtype=str)
+    epics = np.loadtxt('Keplc2.ls', dtype=str)
     field = '12'
     cad = 'l'
     refcad = np.loadtxt('ref_centroid.dat', usecols=[0], dtype=int)
