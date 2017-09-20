@@ -6,11 +6,12 @@ but we can probably average a few).
 """
 from pixel2flux import *
 import matplotlib.pyplot as plt
+plt.ion()
 import numpy as np
 import sys
 from collections import Counter
 
-epics = np.loadtxt('starlist.txt', dtype=str)
+epics = np.loadtxt('guide_stars.txt', dtype=str)
 field = sys.argv[1]
 
 write = True
@@ -29,10 +30,10 @@ for epic in epics:
         continue
 
     aperture = targ.find_aper()
-    fig = plt.figure(figsize=(8,8))
-    ax = fig.add_subplot(111)
-    draw_aper(targ, aperture.labels, ax)
-    plt.savefig('outputs/'+epic+'_aper.png', dpi=150)
+    # fig = plt.figure(figsize=(8,8))
+    # ax = fig.add_subplot(111)
+    # draw_aper(targ, aperture.labels, ax)
+    # plt.savefig('outputs/'+epic+'_aper.png', dpi=150)
 
     ftot = targ.aper_phot(aperture)
     goodcads = targ.find_thrust(printtimes=False)
@@ -56,11 +57,12 @@ print 'no. of good points=', len(refcad)
 # labels = targ.find_aper()
 # ftot = targ.aper_phot(labels)
 # plt.plot(targ.data['jd'], ftot, 'b.')
-# plt.plot(targ.data['jd'][~thruster_mask], ftot[~thruster_mask], 'ro')
+# # plt.plot(targ.data['jd'][~thruster_mask], ftot[~thruster_mask], 'ro')
 # plt.show()
 
 
 for epic in epics:
+    print 'Plotting ', epic
     targ = PixelTarget(epic, field, 'l')
     targ.read_fits(clean=False)
     aperture = targ.find_aper()
@@ -106,7 +108,7 @@ plt.plot(ref_x, ref_y, 'b.')
 plt.show()
 
 if write:
-    outfile = open('ref_centroid.dat', 'w')
+    outfile = open('ref_centroid_full.dat', 'w')
     print>> outfile, '# cadence x y seg'
 
     print len(targ.data['cadence']), len(ref_x)

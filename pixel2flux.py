@@ -35,6 +35,12 @@ class Aperture:
         self.aperinfo = aperinfo
         self.labels = labels
         self.cent = cent
+        if aperinfo is 'arbitrary':
+            centcoord = np.where(cent==1)
+        else:
+            centcoord = cent
+        self.centx = centcoord[0]
+        self.centy = centcoord[1]
 
     def __str__(self):
         return 'Aperture shape: %s', self.aperinfo
@@ -408,14 +414,15 @@ class PixelTarget:
         self.data['cadence'] = self.data['cadence'][thruster_mask]
 
 
-def draw_aper(pixeltarg, aper, ax):
+def draw_aper(pixeltarg, aperture, ax):
     """
     Plot aperture on pixel level image.
     :param pixeltarg: PixelTarget object
-    :param aper: aperture array (Aperture.labels)
+    :param aperture: Aperture object 
     :param ax: plot handle
     :return:
     """
+    aper = aperture.labels
     flux = pixeltarg.pixeldat
     fsum = np.nansum(flux, axis=0)
     fsum -= min(fsum.ravel())
@@ -451,16 +458,17 @@ def draw_aper(pixeltarg, aper, ax):
 
     ax.set_xlim(0, aper.shape[1])
     ax.set_ylim(0, aper.shape[0])
+    # print aper.centx, aper.centy
+    ax.plot(aperture.centx, aperture.centy, 'ro')
     return ax
 
 
-def test(epic, field, cad, refcadfile):
+def test(epic, field, cad, refcad):
     targ = PixelTarget(epic, field, cad)
     print 'Working on target ', epic
     targ.read_fits()
     print "Kep mag=", targ.kmag
 
-    refcad = np.loadtxt(refcadfile, dtype=int)
     aperture = targ.find_aper()
     ftot = targ.aper_phot(aperture)
     fig = plt.figure(figsize=(15,4))
@@ -476,13 +484,13 @@ def test(epic, field, cad, refcadfile):
 
     fig = plt.figure(figsize=(8,8))
     ax = fig.add_subplot(111)
-    ax = draw_aper(targ, aperture.labels, ax)
+    ax = draw_aper(targ, aperture, ax)
     plt.savefig('outputs/'+epic+'_aper.png', dpi=150)
     plt.close('all')
 
     fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(111)
-    ax = draw_aper(targ, circ_aper.labels, ax)
+    ax = draw_aper(targ, circ_aper, ax)
     plt.savefig('outputs/' + epic + '_circ_aper.png', dpi=150)
 
     fig = plt.figure(figsize=(10,3))
@@ -521,7 +529,7 @@ def main(epic, field, cad, refcad, logging=True):
 
     mad = median_absolute_deviation(ftot)
     best_rad = 'arbitrary'
-    best_aper = aperture.labels
+    best_aper = aperture
 
     ftot_all = {'arbitrary': ftot}
     poisson_all = {'arbitrary': targ.poisson}
@@ -540,7 +548,7 @@ def main(epic, field, cad, refcad, logging=True):
         if mad_new < mad:
             mad = mad_new
             best_rad = str(r)
-            best_aper = circ_apers.labels
+            best_aper = circ_apers
 
     fig = plt.figure(figsize=(8,8))
     ax = fig.add_subplot(111)
@@ -585,10 +593,11 @@ def extract_multi(args, outdir='rawlc/'):
 
 if __name__ == '__main__':
 
-    epics = np.loadtxt('Keplc2.ls', dtype=str)
-    field = '12'
+    epics = np.loadtxt('Keplc.ls', dtype=str)
+    # epics = ['ktwo247281516-c13_lpd-targ.fits']
+    field = '102'
     cad = 'l'
-    refcad = np.loadtxt('ref_centroid.dat', usecols=[0], dtype=int)
+    refcad = np.loadtxt('ref_centroid_new.dat', usecols=[0], dtype=int)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger = multiprocessing.get_logger()
     hdlr = logging.FileHandler('pixel2flux.log', mode='w')
@@ -599,13 +608,19 @@ if __name__ == '__main__':
     logger.addHandler(ch)
     logger.setLevel(logging.INFO)
     logger.info('Process started')
+    # test(epics[0], field, cad, refcad)
 
-    # with open('poisson.txt', 'a') as outfile:
-    #     print>>outfile, '# epic kepmag  poisson'
+    with open('poisson.txt', 'a') as outfile:
+        print>>outfile, '# epic kepmag  poisson'
 
-    pool = multiprocessing.Pool(processes=3)
-    TASK = [(epics[i], field, cad, refcad) for i in range(len(epics))]
-    pool.map(extract_multi, TASK)
+    multi = False
+    if multi:
+        pool = multiprocessing.Pool(processes=3)
+        TASK = [(epics[i], field, cad, refcad) for i in range(len(epics))]
+        pool.map(extract_multi, TASK)
+    else:
+        for epic in epics:
+            extract_multi([epic, field, cad, refcad])
 
 
 
