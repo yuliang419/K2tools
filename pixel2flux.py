@@ -56,7 +56,7 @@ class PixelTarget:
         """
         self.data = {'jd': [], 'rlc': [], 'x': [], 'y': [], 'cadence': []}
         # epic = os.path.split(fname)[1][4:13]
-        epic = fname[4:13]
+        epic = fname
         self.logging = logging
         self.epic = epic
         self.field = field
@@ -318,7 +318,7 @@ class PixelTarget:
             else:
                 t_int = 6.02*270
                 numreads = 270
-            poisson = np.sqrt(np.median(ftot)*t_int + np.median(bg_t)*t_int + na*self.readnoise*numreads) / \
+            poisson = np.sqrt(np.median(ftot)*t_int + np.median(bg_t)*t_int + na*(self.readnoise*numreads)**2) / \
                       (np.median(ftot)*t_int)
             self.poisson = poisson  # fractional poisson noise
 
@@ -593,11 +593,11 @@ def extract_multi(args, outdir='rawlc/'):
 
 if __name__ == '__main__':
 
-    epics = np.loadtxt('Keplc.ls', dtype=str)
-    # epics = ['ktwo247281516-c13_lpd-targ.fits']
-    field = '102'
+    epics = np.loadtxt('Keplc2.ls', dtype=str)
+    # epics = ['ktwo229014775-c102_lpd-targ.fits']
+    field = '12'
     cad = 'l'
-    refcad = np.loadtxt('ref_centroid_new.dat', usecols=[0], dtype=int)
+    refcad = np.loadtxt('ref_centroid.dat', usecols=[0], dtype=int)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger = multiprocessing.get_logger()
     hdlr = logging.FileHandler('pixel2flux.log', mode='w')
@@ -613,7 +613,7 @@ if __name__ == '__main__':
     with open('poisson.txt', 'a') as outfile:
         print>>outfile, '# epic kepmag  poisson'
 
-    multi = False
+    multi = True
     if multi:
         pool = multiprocessing.Pool(processes=3)
         TASK = [(epics[i], field, cad, refcad) for i in range(len(epics))]
