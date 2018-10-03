@@ -5,3 +5,8 @@ This code borrows elements from Vincent van Eylen, Roberto Sanchis-Ojeda and And
 Run ecentroid.py on a group of reference stars to obtain thruster fire times and reference centroid positions. Then run pixel2flux.py to extract light curves from pixel-level images. 
 
 # Usage
+Before processing any K2 field, select a few well-behaved guide stars from the field and write their EPIC numbers into a file called guide_stars.txt. Then run the following to generate a list of good cadence numbers and reference centroids:
+
+```
+python ecentroid.py [field number]
+```
