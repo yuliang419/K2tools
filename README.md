@@ -11,4 +11,4 @@ Before processing any K2 field, select a few well-behaved guide stars from the f
 python ecentroid.py [field number]
 ```
 
-In the same directory as the reference centroid file, make a list of all EPIC numbers of targets in the field called "Keplc2.ls". Then run pixel2flux.py to extract flux from pixel-level images and remove systematic noise from the light curves.
+In the same directory as the reference centroid file, make a list of all EPIC numbers of targets in the field called "Keplc2.ls". Then run pixel2flux.py to automatically select the optimal aperture, perform aperture photometry, and extract flux from pixel-level images. 
