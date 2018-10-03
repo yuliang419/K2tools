@@ -12,3 +12,9 @@ python ecentroid.py [field number]
 ```
 
 In the same directory as the reference centroid file, make a list of all EPIC numbers of targets in the field called "Keplc2.ls". Then run pixel2flux.py to automatically select the optimal aperture, perform aperture photometry, and extract flux from pixel-level images. 
+
+analysis.py produces a set of diagnostic plots for any given target. Input the target's EPIC number and initially guesses of its transit ephemeris (t0) and period.
+
+```
+python analysis.py [target_name] t0 initperiod
+```
